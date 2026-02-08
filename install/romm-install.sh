@@ -182,18 +182,18 @@ EOF
 ln -sfn "$ROMM_ENV_FILE" "$ROMM_HOME/.env"
 
 cat <<EOF >"$ROMM_CRED_FILE"
-RomM MariaDB Credentials
-DB_NAME=${DB_NAME}
-DB_USER=${DB_USER}
-DB_PASSWD=${DB_PASSWD}
-ROMM_AUTH_SECRET_KEY=${ROMM_AUTH_SECRET_KEY}
+RomM Credentials
+=================
+Database Name: ${DB_NAME}
+Database User: ${DB_USER}
+Database Password: ${DB_PASSWD}
+Auth Secret Key: ${ROMM_AUTH_SECRET_KEY}
 
-Access RomM at: http://$(hostname -I | awk '{print $1}'):8080
-Library location: ${ROMM_BASE}/library
-Config file: ${ROMM_BASE}/config/config.yml
+Library: ${ROMM_BASE}/library
+Config: ${ROMM_BASE}/config/config.yml
+Env File: ${ROMM_ENV_FILE}
 
-To reconfigure, edit: ${ROMM_ENV_FILE}
-Then restart: systemctl restart romm
+To reconfigure: edit ${ROMM_ENV_FILE} and run 'systemctl restart romm'
 EOF
 chmod 600 "$ROMM_CRED_FILE"
 msg_ok "Configured RomM"
@@ -588,13 +588,3 @@ msg_info "Cleaning up"
 $STD apt-get -y autoremove
 $STD apt-get -y autoclean
 msg_ok "Cleaned"
-
-msg_info "RomM installation complete!"
-echo -e "Access RomM at: http://$(hostname -I | awk '{print $1}'):8080"
-echo -e "Credentials saved to: $ROMM_CRED_FILE"
-echo -e "Library location: $ROMM_BASE/library"
-echo -e ""
-echo -e "To manage RomM:"
-echo -e "  systemctl status romm"
-echo -e "  systemctl restart romm"
-echo -e "  journalctl -u romm -f"
