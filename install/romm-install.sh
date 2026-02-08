@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 community-scripts ORG
+# Copyright (c) 2021-2026 community-scripts ORG
 # Author: DevelopmentCats (adapted from brandong84's Alpine script)
-# License: MIT | https://github.com/community-scripts/ProxmoxVED/raw/main/LICENSE
+# License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/branch/main/LICENSE
 # Source: https://github.com/rommapp/romm
 
 source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
@@ -109,19 +109,11 @@ if ! id -u "$ROMM_USER" >/dev/null 2>&1; then
 fi
 msg_ok "Created RomM user"
 
-msg_info "Configuring MariaDB"
-$STD systemctl enable --now mariadb
-sleep 3
-DB_NAME="romm"
-DB_USER="romm"
-DB_PASSWD=$(openssl rand -hex 16)
-mariadb -u root <<EOF
-CREATE DATABASE IF NOT EXISTS ${DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASSWD}';
-GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'localhost';
-FLUSH PRIVILEGES;
-EOF
-msg_ok "Configured MariaDB"
+setup_mariadb
+MARIADB_DB_NAME="romm" MARIADB_DB_USER="romm" MARIADB_DB_CREDS_FILE="$ROMM_CRED_FILE" setup_mariadb_db
+DB_NAME="$MARIADB_DB_NAME"
+DB_USER="$MARIADB_DB_USER"
+DB_PASSWD="$MARIADB_DB_PASS"
 
 msg_info "Building RAHasher"
 git clone --recursive --branch 1.8.1 --depth 1 https://github.com/RetroAchievements/RALibretro.git /tmp/RALibretro
@@ -181,12 +173,10 @@ LOGLEVEL=INFO
 EOF
 ln -sfn "$ROMM_ENV_FILE" "$ROMM_HOME/.env"
 
-cat <<EOF >"$ROMM_CRED_FILE"
-RomM Credentials
-=================
-Database Name: ${DB_NAME}
-Database User: ${DB_USER}
-Database Password: ${DB_PASSWD}
+cat <<EOF >>"$ROMM_CRED_FILE"
+
+RomM Configuration
+==================
 Auth Secret Key: ${ROMM_AUTH_SECRET_KEY}
 
 Library: ${ROMM_BASE}/library
