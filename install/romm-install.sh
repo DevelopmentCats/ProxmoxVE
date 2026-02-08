@@ -21,33 +21,11 @@ msg_ok "Installed Dependencies"
 msg_info "Installing Docker"
 $STD install -m 0755 -d /etc/apt/keyrings
 
-# Download the key to a temporary file first - this prevents pipe failures
-KEY_TMP_FILE=$(mktemp)
-$STD curl -fsSL https://download.docker.com/linux/debian/gpg -o $KEY_TMP_FILE
-
-# Check if the key was downloaded successfully
-if [ -s "$KEY_TMP_FILE" ]; then
-  # Process the key file
-  $STD cat $KEY_TMP_FILE | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-  $STD chmod a+r /etc/apt/keyrings/docker.gpg
-  rm -f $KEY_TMP_FILE
-else
-  echo "Failed to download Docker GPG key. Trying alternate method..."
-  # Alternative approach using apt-key (deprecated but works in many cases)
-  $STD curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add -
-  # Create docker.list without signed-by option
-  echo \
-    "deb [arch=$(dpkg --print-architecture)] https://download.docker.com/linux/debian \
-    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-    tee /etc/apt/sources.list.d/docker.list > /dev/null
-  rm -f $KEY_TMP_FILE
-  
-  # Continue with installation
-  $STD apt-get update
-  $STD apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-  msg_ok "Installed Docker (alternative method)"
-  return
-fi
+# Download and install Docker GPG key
+$STD curl -fsSL https://download.docker.com/linux/debian/gpg -o /tmp/docker.gpg
+$STD gpg --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.gpg
+$STD chmod a+r /etc/apt/keyrings/docker.gpg
+rm -f /tmp/docker.gpg
 
 echo \
   "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
@@ -60,8 +38,8 @@ msg_ok "Installed Docker"
 
 msg_info "Creating Directories"
 mkdir -p /opt/romm/library/{roms,bios}
-mkdir -p /opt/romm/library/roms/{gbc,gba,ps}
-mkdir -p /opt/romm/library/bios/{gba,ps}
+mkdir -p /opt/romm/library/roms/{gbc,gba,ps,switch,n64,snes,nes,genesis}
+mkdir -p /opt/romm/library/bios/{gba,ps,ps2}
 mkdir -p /opt/romm/assets
 mkdir -p /opt/romm/config
 msg_ok "Created Directories"
@@ -71,58 +49,6 @@ AUTH_KEY=$(openssl rand -hex 32)
 DB_ROOT_PASSWORD=$(openssl rand -hex 16)
 DB_USER_PASSWORD=$(openssl rand -hex 16)
 msg_ok "Generated Credentials"
-
-# Ask if the user wants to configure background tasks
-msg_info "Background Tasks Configuration"
-echo "RomM supports automatic background tasks for library maintenance."
-read -p "Do you want to configure background tasks? (y/n): " CONFIGURE_BACKGROUND_TASKS
-
-# Initialize background task variables with defaults
-BG_ENABLE_RESCAN_FS_CHANGE="false"
-BG_RESCAN_FS_CHANGE_DELAY="5"
-BG_ENABLE_SCHEDULED_RESCAN="false"
-BG_SCHEDULED_RESCAN_CRON="0 3 * * *"
-BG_ENABLE_UPDATE_SWITCH_TITLEDB="false"
-BG_UPDATE_SWITCH_TITLEDB_CRON="0 4 * * *"
-
-if [[ "${CONFIGURE_BACKGROUND_TASKS}" =~ ^[Yy]$ ]]; then
-    msg_info "Configuring Background Tasks"
-    echo "For each setting, press Enter to use the default value."
-    
-    # Configure auto-rescan on filesystem changes
-    read -p "Enable auto-rescan when files change? (default: false): " temp_input
-    if [ ! -z "$temp_input" ]; then BG_ENABLE_RESCAN_FS_CHANGE="$temp_input"; fi
-    
-    # If auto-rescan is enabled, ask for delay
-    if [[ "${BG_ENABLE_RESCAN_FS_CHANGE}" =~ ^[Tt][Rr][Uu][Ee]$ ]]; then
-        read -p "Delay before rescan after file changes (in minutes, default: 5): " temp_input
-        if [ ! -z "$temp_input" ]; then BG_RESCAN_FS_CHANGE_DELAY="$temp_input"; fi
-    fi
-    
-    # Configure scheduled rescan
-    read -p "Enable scheduled library rescans? (default: false): " temp_input
-    if [ ! -z "$temp_input" ]; then BG_ENABLE_SCHEDULED_RESCAN="$temp_input"; fi
-    
-    # If scheduled rescan is enabled, ask for cron schedule
-    if [[ "${BG_ENABLE_SCHEDULED_RESCAN}" =~ ^[Tt][Rr][Uu][Ee]$ ]]; then
-        read -p "Cron schedule for rescans (default: 0 3 * * * = 3 AM daily): " temp_input
-        if [ ! -z "$temp_input" ]; then BG_SCHEDULED_RESCAN_CRON="$temp_input"; fi
-    fi
-    
-    # Configure Switch TitleDB update
-    read -p "Enable scheduled Switch TitleDB updates? (default: false): " temp_input
-    if [ ! -z "$temp_input" ]; then BG_ENABLE_UPDATE_SWITCH_TITLEDB="$temp_input"; fi
-    
-    # If Switch TitleDB update is enabled, ask for cron schedule
-    if [[ "${BG_ENABLE_UPDATE_SWITCH_TITLEDB}" =~ ^[Tt][Rr][Uu][Ee]$ ]]; then
-        read -p "Cron schedule for TitleDB updates (default: 0 4 * * * = 4 AM daily): " temp_input
-        if [ ! -z "$temp_input" ]; then BG_UPDATE_SWITCH_TITLEDB_CRON="$temp_input"; fi
-    fi
-    
-    msg_ok "Background tasks configured"
-else
-    msg_info "Using default background task settings (all disabled)"
-fi
 
 msg_info "Creating Docker Compose File"
 cat >/opt/romm/docker-compose.yml <<EOF
@@ -142,13 +68,13 @@ services:
       - DB_USER=romm-user
       - DB_PASSWD=${DB_USER_PASSWORD}
       - ROMM_AUTH_SECRET_KEY=${AUTH_KEY}
-      # Background task settings
-      - ENABLE_RESCAN_ON_FILESYSTEM_CHANGE=${BG_ENABLE_RESCAN_FS_CHANGE}
-      - RESCAN_ON_FILESYSTEM_CHANGE_DELAY=${BG_RESCAN_FS_CHANGE_DELAY}
-      - ENABLE_SCHEDULED_RESCAN=${BG_ENABLE_SCHEDULED_RESCAN}
-      - SCHEDULED_RESCAN_CRON="${BG_SCHEDULED_RESCAN_CRON}"
-      - ENABLE_SCHEDULED_UPDATE_SWITCH_TITLEDB=${BG_ENABLE_UPDATE_SWITCH_TITLEDB}
-      - SCHEDULED_UPDATE_SWITCH_TITLEDB_CRON="${BG_UPDATE_SWITCH_TITLEDB_CRON}"
+      # Background task defaults (can be modified in docker-compose.yml after install)
+      - ENABLE_RESCAN_ON_FILESYSTEM_CHANGE=false
+      - RESCAN_ON_FILESYSTEM_CHANGE_DELAY=5
+      - ENABLE_SCHEDULED_RESCAN=false
+      - SCHEDULED_RESCAN_CRON=0 3 * * *
+      - ENABLE_SCHEDULED_UPDATE_SWITCH_TITLEDB=false
+      - SCHEDULED_UPDATE_SWITCH_TITLEDB_CRON=0 4 * * *
     volumes:
       - romm_resources:/romm/resources
       - romm_redis_data:/redis-data
@@ -187,6 +113,18 @@ cd /opt/romm
 $STD docker compose up -d
 msg_ok "Started RomM"
 
+msg_info "Waiting for containers to be healthy"
+for i in {1..60}; do
+  if docker compose ps | grep -q "healthy"; then
+    msg_ok "Containers are healthy"
+    break
+  fi
+  sleep 2
+  if [ $i -eq 60 ]; then
+    msg_error "Containers failed to become healthy - check 'docker compose logs' in /opt/romm"
+  fi
+done
+
 # Configure firewall if it exists
 if command -v ufw >/dev/null 2>&1; then
   msg_info "Configuring Firewall"
@@ -194,10 +132,33 @@ if command -v ufw >/dev/null 2>&1; then
   msg_ok "Configured Firewall"
 fi
 
+msg_info "Saving credentials"
+cat >/opt/romm/CREDENTIALS.txt <<EOF
+==============================================
+RomM Installation Credentials
+==============================================
+Database Root Password: ${DB_ROOT_PASSWORD}
+Database User: romm-user
+Database Password: ${DB_USER_PASSWORD}
+Auth Secret Key: ${AUTH_KEY}
+
+Location: /opt/romm
+Docker Compose: /opt/romm/docker-compose.yml
+Library: /opt/romm/library
+
+To customize background tasks, edit:
+/opt/romm/docker-compose.yml
+
+Then restart: cd /opt/romm && docker compose restart
+==============================================
+EOF
+chmod 600 /opt/romm/CREDENTIALS.txt
+msg_ok "Saved credentials to /opt/romm/CREDENTIALS.txt"
+
 motd_ssh
 customize
 
 msg_info "Cleaning up"
 $STD apt-get -y autoremove
 $STD apt-get -y autoclean
-msg_ok "Cleaned" 
+msg_ok "Cleaned"
