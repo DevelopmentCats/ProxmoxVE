@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # TEST VERSION - Sources from DevelopmentCats fork (specific commit to bypass cache)
-source <(curl -s https://raw.githubusercontent.com/DevelopmentCats/ProxmoxVE/c3bafad75/misc/build.func)
+source <(curl -s https://raw.githubusercontent.com/DevelopmentCats/ProxmoxVE/16092df02/misc/build.func)
 
 # Copyright (c) 2021-2026 community-scripts ORG
 # Author: DevelopmentCats
