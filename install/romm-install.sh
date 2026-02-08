@@ -3,7 +3,7 @@
 # Copyright (c) 2021-2026 community-scripts ORG
 # Author: DevelopmentCats
 # Sponsor: https://ko-fi.com/developmentcats
-# License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/branch/main/LICENSE
+# License: MIT | https://github.com/DevelopmentCats/ProxmoxVE/raw/branch/main/LICENSE
 # Source: https://github.com/rommapp/romm
 
 source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
@@ -28,6 +28,7 @@ $STD apt-get install -y \
   mariadb-server \
   redis-server \
   libmariadb-dev \
+  libpq-dev \
   libmagic-dev \
   openssl
 msg_ok "Installed Dependencies"
