@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# TEST VERSION - Sources from DevelopmentCats fork
-source <(curl -s https://raw.githubusercontent.com/DevelopmentCats/ProxmoxVE/main/misc/build.func)
+# TEST VERSION - Sources from DevelopmentCats fork (specific commit to bypass cache)
+source <(curl -s https://raw.githubusercontent.com/DevelopmentCats/ProxmoxVE/c3bafad75/misc/build.func)
 
 # Copyright (c) 2021-2026 community-scripts ORG
 # Author: DevelopmentCats
-# License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/branch/main/LICENSE
+# License: MIT | https://github.com/DevelopmentCats/ProxmoxVE/raw/branch/main/LICENSE
 # Source: https://git.chesher.xyz/cat/romm-proxmox-ve-script
 
 APP="RomM"
