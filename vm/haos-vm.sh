@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 tteck
+# Copyright (c) 2021-2026 tteck
 # Author: tteck (tteckster)
-# License: MIT
-# https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
+# License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 
-source /dev/stdin <<< $(wget -qLO - https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/api.func)
-
+source /dev/stdin <<<$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/api.func)
 
 function header_info {
   clear
@@ -22,17 +20,15 @@ EOF
 header_info
 echo -e "\n Loading..."
 GEN_MAC=02:$(openssl rand -hex 5 | awk '{print toupper($0)}' | sed 's/\(..\)/\1:/g; s/.$//')
-NEXTID=$(pvesh get /cluster/nextid)
-VERSIONS=(stable beta dev)
-#API VARIABLES
 RANDOM_UUID="$(cat /proc/sys/kernel/random/uuid)"
+VERSIONS=(stable beta dev)
 METHOD=""
 NSAPP="homeassistant-os"
 var_os="homeassistant"
 DISK_SIZE="32G"
-#
+
 for version in "${VERSIONS[@]}"; do
-  eval "$version=$(curl -s https://raw.githubusercontent.com/home-assistant/version/master/$version.json | grep "ova" | cut -d '"' -f 4)"
+  eval "$version=$(curl -fsSL https://raw.githubusercontent.com/home-assistant/version/master/stable.json | grep '"ova"' | cut -d '"' -f 4)"
 done
 YW=$(echo "\033[33m")
 BL=$(echo "\033[36m")
@@ -42,28 +38,62 @@ BGN=$(echo "\033[4;92m")
 GN=$(echo "\033[1;92m")
 DGN=$(echo "\033[32m")
 CL=$(echo "\033[m")
+
+BOLD=$(echo "\033[1m")
 BFR="\\r\\033[K"
 HOLD=" "
-CM="${GN}✓${CL}"
-CROSS="${RD}✗${CL}"
+TAB="  "
+
+CM="${TAB}✔️${TAB}${CL}"
+CROSS="${TAB}✖️${TAB}${CL}"
+INFO="${TAB}💡${TAB}${CL}"
+OS="${TAB}🖥️${TAB}${CL}"
+CONTAINERTYPE="${TAB}📦${TAB}${CL}"
+DISKSIZE="${TAB}💾${TAB}${CL}"
+CPUCORE="${TAB}🧠${TAB}${CL}"
+RAMSIZE="${TAB}🛠️${TAB}${CL}"
+CONTAINERID="${TAB}🆔${TAB}${CL}"
+HOSTNAME="${TAB}🏠${TAB}${CL}"
+BRIDGE="${TAB}🌉${TAB}${CL}"
+GATEWAY="${TAB}🌐${TAB}${CL}"
+DEFAULT="${TAB}⚙️${TAB}${CL}"
+MACADDRESS="${TAB}🔗${TAB}${CL}"
+VLANTAG="${TAB}🏷️${TAB}${CL}"
+CREATING="${TAB}🚀${TAB}${CL}"
+ADVANCED="${TAB}🧩${TAB}${CL}"
+CLOUD="${TAB}☁️${TAB}${CL}"
+
 THIN="discard=on,ssd=1,"
-SPINNER_PID=""
-set -Eeuo pipefail
+set -e
 trap 'error_handler $LINENO "$BASH_COMMAND"' ERR
 trap cleanup EXIT
-trap 'post_update_to_api "failed" "INTERRUPTED"' SIGINT 
+trap 'post_update_to_api "failed" "INTERRUPTED"' SIGINT
 trap 'post_update_to_api "failed" "TERMINATED"' SIGTERM
-
 function error_handler() {
-  if [ -n "$SPINNER_PID" ] && ps -p $SPINNER_PID > /dev/null; then kill $SPINNER_PID > /dev/null; fi
-  printf "\e[?25h"
   local exit_code="$?"
   local line_number="$1"
   local command="$2"
-  post_update_to_api "failed" "${command}"
   local error_message="${RD}[ERROR]${CL} in line ${RD}$line_number${CL}: exit code ${RD}$exit_code${CL}: while executing command ${YW}$command${CL}"
+  post_update_to_api "failed" "${command}"
   echo -e "\n$error_message\n"
   cleanup_vmid
+}
+
+function get_valid_nextid() {
+  local try_id
+  try_id=$(pvesh get /cluster/nextid)
+  while true; do
+    if [ -f "/etc/pve/qemu-server/${try_id}.conf" ] || [ -f "/etc/pve/lxc/${try_id}.conf" ]; then
+      try_id=$((try_id + 1))
+      continue
+    fi
+    if lvs --noheadings -o lv_name | grep -qE "(^|[-_])${try_id}($|[-_])"; then
+      try_id=$((try_id + 1))
+      continue
+    fi
+    break
+  done
+  echo "$try_id"
 }
 
 function cleanup_vmid() {
@@ -75,46 +105,31 @@ function cleanup_vmid() {
 
 function cleanup() {
   popd >/dev/null
+  post_update_to_api "done" "none"
   rm -rf $TEMP_DIR
 }
 
 TEMP_DIR=$(mktemp -d)
 pushd $TEMP_DIR >/dev/null
-if whiptail --backtitle "Proxmox VE Helper Scripts" --title "HOME ASSISTANT OS VM" --yesno "This will create a New Home Assistant OS VM. Proceed?" 10 58; then
+if whiptail --backtitle "Proxmox VE Helper Scripts" --title "Homeassistant OS VM" --yesno "This will create a New Homeassistant OS VM. Proceed?" 10 58; then
   :
 else
-  header_info && echo -e "⚠ User exited script \n" && exit
+  header_info && echo -e "${CROSS}${RD}User exited script${CL}\n" && exit
 fi
-
-function spinner() {
-    local chars="/-\|"
-    local spin_i=0
-    printf "\e[?25l"
-    while true; do
-        printf "\r \e[36m%s\e[0m" "${chars:spin_i++%${#chars}:1}"
-        sleep 0.1
-    done
-}
 
 function msg_info() {
   local msg="$1"
-  echo -ne " ${HOLD} ${YW}${msg}   "
-  spinner &
-  SPINNER_PID=$!
+  echo -ne "${TAB}${YW}${HOLD}${msg}${HOLD}"
 }
 
 function msg_ok() {
-  if [ -n "$SPINNER_PID" ] && ps -p $SPINNER_PID > /dev/null; then kill $SPINNER_PID > /dev/null; fi
-  printf "\e[?25h"
   local msg="$1"
-  echo -e "${BFR} ${CM} ${GN}${msg}${CL}"
+  echo -e "${BFR}${CM}${GN}${msg}${CL}"
 }
 
 function msg_error() {
-  if [ -n "$SPINNER_PID" ] && ps -p $SPINNER_PID > /dev/null; then kill $SPINNER_PID > /dev/null; fi
-  printf "\e[?25h"
   local msg="$1"
-  echo -e "${BFR} ${CROSS} ${RD}${msg}${CL}"
+  echo -e "${BFR}${CROSS}${RD}${msg}${CL}"
 }
 
 function check_root() {
@@ -127,19 +142,44 @@ function check_root() {
   fi
 }
 
-function pve_check() {
-  if ! pveversion | grep -Eq "pve-manager/8\.[1-3](\.[0-9]+)*"; then
-    msg_error "This version of Proxmox Virtual Environment is not supported"
-    echo -e "Requires Proxmox Virtual Environment Version 8.1 or later."
-    echo -e "Exiting..."
-    sleep 2
-    exit
-fi
+# This function checks the version of Proxmox Virtual Environment (PVE) and exits if the version is not supported.
+# Supported: Proxmox VE 8.0.x – 8.9.x, 9.0 and 9.1
+pve_check() {
+  local PVE_VER
+  PVE_VER="$(pveversion | awk -F'/' '{print $2}' | awk -F'-' '{print $1}')"
+
+  # Check for Proxmox VE 8.x: allow 8.0–8.9
+  if [[ "$PVE_VER" =~ ^8\.([0-9]+) ]]; then
+    local MINOR="${BASH_REMATCH[1]}"
+    if ((MINOR < 0 || MINOR > 9)); then
+      msg_error "This version of Proxmox VE is not supported."
+      msg_error "Supported: Proxmox VE version 8.0 – 8.9"
+      exit 1
+    fi
+    return 0
+  fi
+
+  # Check for Proxmox VE 9.x: allow 9.0 and 9.1
+  if [[ "$PVE_VER" =~ ^9\.([0-9]+) ]]; then
+    local MINOR="${BASH_REMATCH[1]}"
+    if ((MINOR < 0 || MINOR > 1)); then
+      msg_error "This version of Proxmox VE is not supported."
+      msg_error "Supported: Proxmox VE version 9.0 – 9.1"
+      exit 1
+    fi
+    return 0
+  fi
+
+  # All other unsupported versions
+  msg_error "This version of Proxmox VE is not supported."
+  msg_error "Supported versions: Proxmox VE 8.0 – 8.x or 9.0 – 9.1"
+  exit 1
 }
 
 function arch_check() {
   if [ "$(dpkg --print-architecture)" != "amd64" ]; then
-    msg_error "This script will not work with PiMox! \n"
+    echo -e "\n ${INFO}${YWB}This script will not work with PiMox! \n"
+    echo -e "\n ${YWB}Visit https://github.com/asylumexp/Proxmox for ARM64 support. \n"
     echo -e "Exiting..."
     sleep 2
     exit
@@ -161,18 +201,81 @@ function ssh_check() {
 
 function exit-script() {
   clear
-  echo -e "⚠  User exited script \n"
+  echo -e "\n${CROSS}${RD}User exited script${CL}\n"
   exit
+}
+
+# Ensure pv is installed or abort with instructions
+function ensure_pv() {
+  if ! command -v pv &>/dev/null; then
+    msg_info "Installing required package: pv"
+    if ! apt-get update -qq &>/dev/null || ! apt-get install -y pv &>/dev/null; then
+      msg_error "Failed to install pv automatically."
+      echo -e "\nPlease run manually on the Proxmox host:\n  apt install pv\n"
+      exit 1
+    fi
+    msg_ok "Installed pv"
+  fi
+}
+
+# Download an .xz file and validate it
+# Args: $1=url $2=cache_file
+function download_and_validate_xz() {
+  local url="$1"
+  local file="$2"
+
+  # If file exists, check validity
+  if [[ -s "$file" ]]; then
+    if xz -t "$file" &>/dev/null; then
+      msg_ok "Using cached image $(basename "$file")"
+      return 0
+    else
+      msg_error "Cached file $(basename "$file") is corrupted. Deleting and retrying download..."
+      rm -f "$file"
+    fi
+  fi
+
+  # Download fresh file
+  msg_info "Downloading image: $(basename "$file")"
+  if ! curl -fSL -o "$file" "$url"; then
+    msg_error "Download failed: $url"
+    rm -f "$file"
+    exit 1
+  fi
+
+  # Validate again
+  if ! xz -t "$file" &>/dev/null; then
+    msg_error "Downloaded file $(basename "$file") is corrupted. Please try again later."
+    rm -f "$file"
+    exit 1
+  fi
+  msg_ok "Downloaded and validated $(basename "$file")"
+}
+
+# Extract .xz with pv
+# Args: $1=cache_file $2=target_img
+function extract_xz_with_pv() {
+  set -o pipefail
+  local file="$1"
+  local target="$2"
+
+  msg_info "Decompressing $(basename "$file") to $target"
+  if ! xz -dc "$file" | pv -N "Extracting" >"$target"; then
+    msg_error "Failed to extract $file"
+    rm -f "$target"
+    exit 1
+  fi
+  msg_ok "Decompressed to $target"
 }
 
 function default_settings() {
   BRANCH="$stable"
-  VMID="$NEXTID"
-  FORMAT=",efitype=4m"
-  MACHINE=""
-  DISK_CACHE="cache=writethrough,"
-  HN="haos$stable"
-  CPU_TYPE=" -cpu host"
+  VMID=$(get_valid_nextid)
+  MACHINE="q35"
+  FORMAT=""
+  DISK_SIZE="32G"
+  HN="haos-${BRANCH}"
+  CPU_TYPE=""
   CORE_COUNT="2"
   RAM_SIZE="4096"
   BRG="vmbr0"
@@ -181,26 +284,24 @@ function default_settings() {
   MTU=""
   START_VM="yes"
   METHOD="default"
-  var_version="${stable}"
-  echo -e "${DGN}Using HAOS Version: ${BGN}${BRANCH}${CL}"
-  echo -e "${DGN}Using Virtual Machine ID: ${BGN}${VMID}${CL}"
-  echo -e "${DGN}Using Machine Type: ${BGN}i440fx${CL}"
-  echo -e "${DGN}Using Disk Cache: ${BGN}Write Through${CL}"
-  echo -e "${DGN}Using Hostname: ${BGN}${HN}${CL}"
-  echo -e "${DGN}Using CPU Model: ${BGN}Host${CL}"
-  echo -e "${DGN}Allocated Cores: ${BGN}${CORE_COUNT}${CL}"
-  echo -e "${DGN}Allocated RAM: ${BGN}${RAM_SIZE}${CL}"
-  echo -e "${DGN}Using Bridge: ${BGN}${BRG}${CL}"
-  echo -e "${DGN}Using MAC Address: ${BGN}${MAC}${CL}"
-  echo -e "${DGN}Using VLAN: ${BGN}Default${CL}"
-  echo -e "${DGN}Using Interface MTU Size: ${BGN}Default${CL}"
-  echo -e "${DGN}Start VM when completed: ${BGN}yes${CL}"
-  echo -e "${BL}Creating a HAOS VM using the above default settings${CL}"
+  echo -e "${CONTAINERID}${BOLD}${DGN}Virtual Machine ID: ${BGN}${VMID}${CL}"
+  echo -e "${CONTAINERTYPE}${BOLD}${DGN}Machine Type: ${BGN}q35${CL}"
+  echo -e "${DISKSIZE}${BOLD}${DGN}Disk Size: ${BGN}${DISK_SIZE}${CL}"
+  echo -e "${HOSTNAME}${BOLD}${DGN}Hostname: ${BGN}${HN}${CL}"
+  echo -e "${OS}${BOLD}${DGN}CPU Model: ${BGN}KVM64${CL}"
+  echo -e "${CPUCORE}${BOLD}${DGN}CPU Cores: ${BGN}${CORE_COUNT}${CL}"
+  echo -e "${RAMSIZE}${BOLD}${DGN}RAM Size: ${BGN}${RAM_SIZE}${CL}"
+  echo -e "${BRIDGE}${BOLD}${DGN}Bridge: ${BGN}${BRG}${CL}"
+  echo -e "${MACADDRESS}${BOLD}${DGN}MAC Address: ${BGN}${MAC}${CL}"
+  echo -e "${VLANTAG}${BOLD}${DGN}VLAN: ${BGN}Default${CL}"
+  echo -e "${DEFAULT}${BOLD}${DGN}Interface MTU Size: ${BGN}Default${CL}"
+  echo -e "${GATEWAY}${BOLD}${DGN}Start VM when completed: ${BGN}yes${CL}"
+  echo -e "${CREATING}${BOLD}${DGN}Creating a Homeassistant OS VM using the above default settings${CL}"
 }
 
 function advanced_settings() {
   METHOD="advanced"
-  if BRANCH=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "HAOS VERSION" --radiolist "Choose Version" --cancel-button Exit-Script 10 58 3 \
+  if BRANCH=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "Homeassistant OS Version" --radiolist "Choose Version" --cancel-button Exit-Script 10 58 3 \
     "$stable" "Stable  " ON \
     "$beta" "Beta  " OFF \
     "$dev" "Dev  " OFF \
@@ -211,33 +312,34 @@ function advanced_settings() {
     exit-script
   fi
 
+  [ -z "${VMID:-}" ] && VMID=$(get_valid_nextid)
   while true; do
-    if VMID=$(whiptail --backtitle "Proxmox VE Helper Scripts" --inputbox "Set Virtual Machine ID" 8 58 $NEXTID --title "VIRTUAL MACHINE ID" --cancel-button Exit-Script 3>&1 1>&2 2>&3); then
+    if VMID=$(whiptail --backtitle "Proxmox VE Helper Scripts" --inputbox "Set Virtual Machine ID" 8 58 $VMID --title "VIRTUAL MACHINE ID" --cancel-button Exit-Script 3>&1 1>&2 2>&3); then
       if [ -z "$VMID" ]; then
-        VMID="$NEXTID"
+        VMID=$(get_valid_nextid)
       fi
       if pct status "$VMID" &>/dev/null || qm status "$VMID" &>/dev/null; then
         echo -e "${CROSS}${RD} ID $VMID is already in use${CL}"
         sleep 2
         continue
       fi
-      echo -e "${DGN}Virtual Machine ID: ${BGN}$VMID${CL}"
+      echo -e "${CONTAINERID}${BOLD}${DGN}Virtual Machine ID: ${BGN}$VMID${CL}"
       break
     else
       exit-script
     fi
   done
 
-  if MACH=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "MACHINE TYPE" --radiolist --cancel-button Exit-Script "Choose Type" 10 58 2 \
-    "i440fx" "Machine i440fx" ON \
-    "q35" "Machine q35" OFF \
+  if MACH=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "MACHINE TYPE" --radiolist --cancel-button Exit-Script "Choose Machine Type" 10 58 2 \
+    "q35" "Modern (PCIe, UEFI, default)" ON \
+    "i440fx" "Legacy (older compatibility)" OFF \
     3>&1 1>&2 2>&3); then
-    if [ $MACH = q35 ]; then
-      echo -e "${DGN}Using Machine Type: ${BGN}$MACH${CL}"
+    if [ "$MACH" = "q35" ]; then
+      echo -e "${CONTAINERTYPE}${BOLD}${DGN}Machine Type: ${BGN}q35${CL}"
       FORMAT=""
       MACHINE=" -machine q35"
     else
-      echo -e "${DGN}Using Machine Type: ${BGN}$MACH${CL}"
+      echo -e "${CONTAINERTYPE}${BOLD}${DGN}Machine Type: ${BGN}i440fx${CL}"
       FORMAT=",efitype=4m"
       MACHINE=""
     fi
@@ -245,15 +347,30 @@ function advanced_settings() {
     exit-script
   fi
 
-  if DISK_CACHE1=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "DISK CACHE" --radiolist "Choose" --cancel-button Exit-Script 10 58 2 \
+  if DISK_SIZE=$(whiptail --backtitle "Proxmox VE Helper Scripts" --inputbox "Set Disk Size in GiB (e.g., 10, 20)" 8 58 "$DISK_SIZE" --title "DISK SIZE" --cancel-button Exit-Script 3>&1 1>&2 2>&3); then
+    DISK_SIZE=$(echo "$DISK_SIZE" | tr -d ' ')
+    if [[ "$DISK_SIZE" =~ ^[0-9]+$ ]]; then
+      DISK_SIZE="${DISK_SIZE}G"
+      echo -e "${DISKSIZE}${BOLD}${DGN}Disk Size: ${BGN}$DISK_SIZE${CL}"
+    elif [[ "$DISK_SIZE" =~ ^[0-9]+G$ ]]; then
+      echo -e "${DISKSIZE}${BOLD}${DGN}Disk Size: ${BGN}$DISK_SIZE${CL}"
+    else
+      echo -e "${DISKSIZE}${BOLD}${RD}Invalid Disk Size. Please use a number (e.g., 10 or 10G).${CL}"
+      exit-script
+    fi
+  else
+    exit-script
+  fi
+
+  if DISK_CACHE=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "DISK CACHE" --radiolist "Choose" --cancel-button Exit-Script 10 58 2 \
     "0" "None" OFF \
     "1" "Write Through (Default)" ON \
     3>&1 1>&2 2>&3); then
-    if [ $DISK_CACHE1 = "1" ]; then
-      echo -e "${DGN}Using Disk Cache: ${BGN}Write Through${CL}"
+    if [ $DISK_CACHE = "1" ]; then
+      echo -e "${DISKSIZE}${BOLD}${DGN}Disk Cache: ${BGN}Write Through${CL}"
       DISK_CACHE="cache=writethrough,"
     else
-      echo -e "${DGN}Using Disk Cache: ${BGN}None${CL}"
+      echo -e "${DISKSIZE}${BOLD}${DGN}Disk Cache: ${BGN}None${CL}"
       DISK_CACHE=""
     fi
   else
@@ -263,26 +380,29 @@ function advanced_settings() {
   if VM_NAME=$(whiptail --backtitle "Proxmox VE Helper Scripts" --inputbox "Set Hostname" 8 58 haos${BRANCH} --title "HOSTNAME" --cancel-button Exit-Script 3>&1 1>&2 2>&3); then
     if [ -z $VM_NAME ]; then
       HN="haos${BRANCH}"
-      echo -e "${DGN}Using Hostname: ${BGN}$HN${CL}"
+      echo -e "${HOSTNAME}${BOLD}${DGN}Hostname: ${BGN}$HN${CL}"
     else
       HN=$(echo ${VM_NAME,,} | tr -d ' ')
-      echo -e "${DGN}Using Hostname: ${BGN}$HN${CL}"
+      echo -e "${HOSTNAME}${BOLD}${DGN}Hostname: ${BGN}$HN${CL}"
     fi
   else
     exit-script
   fi
 
-  if CPU_TYPE1=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "CPU MODEL" --radiolist "Choose" --cancel-button Exit-Script 10 58 2 \
-    "0" "KVM64" OFF \
-    "1" "Host (Default)" ON \
+  if CPU_TYPE1=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "CPU MODEL" --radiolist "Choose CPU Model" --cancel-button Exit-Script 10 58 2 \
+    "KVM64" "Default – safe for migration/compatibility" ON \
+    "Host" "Use host CPU features (faster, no migration)" OFF \
     3>&1 1>&2 2>&3); then
-    if [ $CPU_TYPE1 = "1" ]; then
-      echo -e "${DGN}Using CPU Model: ${BGN}Host${CL}"
+    case "$CPU_TYPE1" in
+    Host)
+      echo -e "${OS}${BOLD}${DGN}CPU Model: ${BGN}Host${CL}"
       CPU_TYPE=" -cpu host"
-    else
-      echo -e "${DGN}Using CPU Model: ${BGN}KVM64${CL}"
+      ;;
+    *)
+      echo -e "${OS}${BOLD}${DGN}CPU Model: ${BGN}KVM64${CL}"
       CPU_TYPE=""
-    fi
+      ;;
+    esac
   else
     exit-script
   fi
@@ -290,20 +410,20 @@ function advanced_settings() {
   if CORE_COUNT=$(whiptail --backtitle "Proxmox VE Helper Scripts" --inputbox "Allocate CPU Cores" 8 58 2 --title "CORE COUNT" --cancel-button Exit-Script 3>&1 1>&2 2>&3); then
     if [ -z $CORE_COUNT ]; then
       CORE_COUNT="2"
-      echo -e "${DGN}Allocated Cores: ${BGN}$CORE_COUNT${CL}"
+      echo -e "${CPUCORE}${BOLD}${DGN}CPU Cores: ${BGN}$CORE_COUNT${CL}"
     else
-      echo -e "${DGN}Allocated Cores: ${BGN}$CORE_COUNT${CL}"
+      echo -e "${CPUCORE}${BOLD}${DGN}CPU Cores: ${BGN}$CORE_COUNT${CL}"
     fi
   else
     exit-script
   fi
 
-  if RAM_SIZE=$(whiptail --backtitle "Proxmox VE Helper Scripts" --inputbox "Allocate RAM in MiB" 8 58 4096 --title "RAM" --cancel-button Exit-Script 3>&1 1>&2 2>&3); then
+  if RAM_SIZE=$(whiptail --backtitle "Proxmox VE Helper Scripts" --inputbox "Allocate RAM in MiB" 8 58 2048 --title "RAM" --cancel-button Exit-Script 3>&1 1>&2 2>&3); then
     if [ -z $RAM_SIZE ]; then
       RAM_SIZE="4096"
-      echo -e "${DGN}Allocated RAM: ${BGN}$RAM_SIZE${CL}"
+      echo -e "${RAMSIZE}${BOLD}${DGN}RAM Size: ${BGN}$RAM_SIZE${CL}"
     else
-      echo -e "${DGN}Allocated RAM: ${BGN}$RAM_SIZE${CL}"
+      echo -e "${RAMSIZE}${BOLD}${DGN}RAM Size: ${BGN}$RAM_SIZE${CL}"
     fi
   else
     exit-script
@@ -312,9 +432,9 @@ function advanced_settings() {
   if BRG=$(whiptail --backtitle "Proxmox VE Helper Scripts" --inputbox "Set a Bridge" 8 58 vmbr0 --title "BRIDGE" --cancel-button Exit-Script 3>&1 1>&2 2>&3); then
     if [ -z $BRG ]; then
       BRG="vmbr0"
-      echo -e "${DGN}Using Bridge: ${BGN}$BRG${CL}"
+      echo -e "${BRIDGE}${BOLD}${DGN}Bridge: ${BGN}$BRG${CL}"
     else
-      echo -e "${DGN}Using Bridge: ${BGN}$BRG${CL}"
+      echo -e "${BRIDGE}${BOLD}${DGN}Bridge: ${BGN}$BRG${CL}"
     fi
   else
     exit-script
@@ -323,10 +443,10 @@ function advanced_settings() {
   if MAC1=$(whiptail --backtitle "Proxmox VE Helper Scripts" --inputbox "Set a MAC Address" 8 58 $GEN_MAC --title "MAC ADDRESS" --cancel-button Exit-Script 3>&1 1>&2 2>&3); then
     if [ -z $MAC1 ]; then
       MAC="$GEN_MAC"
-      echo -e "${DGN}Using MAC Address: ${BGN}$MAC${CL}"
+      echo -e "${MACADDRESS}${BOLD}${DGN}MAC Address: ${BGN}$MAC${CL}"
     else
       MAC="$MAC1"
-      echo -e "${DGN}Using MAC Address: ${BGN}$MAC1${CL}"
+      echo -e "${MACADDRESS}${BOLD}${DGN}MAC Address: ${BGN}$MAC1${CL}"
     fi
   else
     exit-script
@@ -336,10 +456,10 @@ function advanced_settings() {
     if [ -z $VLAN1 ]; then
       VLAN1="Default"
       VLAN=""
-      echo -e "${DGN}Using Vlan: ${BGN}$VLAN1${CL}"
+      echo -e "${VLANTAG}${BOLD}${DGN}VLAN: ${BGN}$VLAN1${CL}"
     else
       VLAN=",tag=$VLAN1"
-      echo -e "${DGN}Using Vlan: ${BGN}$VLAN1${CL}"
+      echo -e "${VLANTAG}${BOLD}${DGN}VLAN: ${BGN}$VLAN1${CL}"
     fi
   else
     exit-script
@@ -349,10 +469,10 @@ function advanced_settings() {
     if [ -z $MTU1 ]; then
       MTU1="Default"
       MTU=""
-      echo -e "${DGN}Using Interface MTU Size: ${BGN}$MTU1${CL}"
+      echo -e "${DEFAULT}${BOLD}${DGN}Interface MTU Size: ${BGN}$MTU1${CL}"
     else
       MTU=",mtu=$MTU1"
-      echo -e "${DGN}Using Interface MTU Size: ${BGN}$MTU1${CL}"
+      echo -e "${DEFAULT}${BOLD}${DGN}Interface MTU Size: ${BGN}$MTU1${CL}"
     fi
   else
     exit-script
@@ -366,8 +486,8 @@ function advanced_settings() {
     START_VM="no"
   fi
 
-  if (whiptail --backtitle "Proxmox VE Helper Scripts" --title "ADVANCED SETTINGS COMPLETE" --yesno "Ready to create HAOS ${BRANCH} VM?" --no-button Do-Over 10 58); then
-    echo -e "${RD}Creating a HAOS VM using the above advanced settings${CL}"
+  if (whiptail --backtitle "Proxmox VE Helper Scripts" --title "ADVANCED SETTINGS COMPLETE" --yesno "Ready to create Homeassistant OS ${BRANCH} VM?" --no-button Do-Over 10 58); then
+    echo -e "${RD}Creating a Homeassistant OS VM using the above advanced settings${CL}"
   else
     header_info
     echo -e "${RD}Using Advanced Settings${CL}"
@@ -391,9 +511,8 @@ check_root
 arch_check
 pve_check
 ssh_check
+ensure_pv
 start_script
-
-
 post_to_api_vm
 
 msg_info "Validating Storage"
@@ -416,74 +535,118 @@ elif [ $((${#STORAGE_MENU[@]} / 3)) -eq 1 ]; then
   STORAGE=${STORAGE_MENU[0]}
 else
   while [ -z "${STORAGE:+x}" ]; do
-    if [ -n "$SPINNER_PID" ] && ps -p $SPINNER_PID > /dev/null; then kill $SPINNER_PID > /dev/null; fi
+    if [ -n "$SPINNER_PID" ] && ps -p $SPINNER_PID >/dev/null; then kill $SPINNER_PID >/dev/null; fi
     printf "\e[?25h"
     STORAGE=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "Storage Pools" --radiolist \
-      "Which storage pool you would like to use for ${HN}?\nTo make a selection, use the Spacebar.\n" \
+      "Which storage pool would you like to use for ${HN}?\nTo make a selection, use the Spacebar.\n" \
       16 $(($MSG_MAX_LENGTH + 23)) 6 \
-      "${STORAGE_MENU[@]}" 3>&1 1>&2 2>&3) || exit
+      "${STORAGE_MENU[@]}" 3>&1 1>&2 2>&3)
   done
 fi
 msg_ok "Using ${CL}${BL}$STORAGE${CL} ${GN}for Storage Location."
 msg_ok "Virtual Machine ID is ${CL}${BL}$VMID${CL}."
+
+var_version="${BRANCH}"
 msg_info "Retrieving the URL for Home Assistant ${BRANCH} Disk Image"
 if [ "$BRANCH" == "$dev" ]; then
-  URL=https://os-artifacts.home-assistant.io/${BRANCH}/haos_ova-${BRANCH}.qcow2.xz
+  URL="https://os-artifacts.home-assistant.io/${BRANCH}/haos_ova-${BRANCH}.qcow2.xz"
 else
-  URL=https://github.com/home-assistant/operating-system/releases/download/${BRANCH}/haos_ova-${BRANCH}.qcow2.xz
+  URL="https://github.com/home-assistant/operating-system/releases/download/${BRANCH}/haos_ova-${BRANCH}.qcow2.xz"
 fi
-sleep 2
+
+CACHE_DIR="/var/lib/vz/template/cache"
+CACHE_FILE="$CACHE_DIR/$(basename "$URL")"
+FILE_IMG="/var/lib/vz/template/tmp/${CACHE_FILE##*/%.xz}" # .qcow2
+
+mkdir -p "$CACHE_DIR" "$(dirname "$FILE_IMG")"
 msg_ok "${CL}${BL}${URL}${CL}"
-wget -q --show-progress $URL
-echo -en "\e[1A\e[0K"
-FILE=$(basename $URL)
-msg_ok "Downloaded ${CL}${BL}haos_ova-${BRANCH}.qcow2.xz${CL}"
-msg_info "Extracting KVM Disk Image"
-unxz $FILE
-STORAGE_TYPE=$(pvesm status -storage $STORAGE | awk 'NR>1 {print $2}')
-case $STORAGE_TYPE in
-nfs | dir)
-  DISK_EXT=".raw"
-  DISK_REF="$VMID/"
-  DISK_IMPORT="-format raw"
-  THIN=""
-  ;;
-btrfs | local-zfs)
-  DISK_EXT=".raw"
-  DISK_REF="$VMID/"
-  DISK_IMPORT="-format raw"
-  FORMAT=",efitype=4m"
-  THIN=""
-  ;;
-esac
-for i in {0,1}; do
-  disk="DISK$i"
-  eval DISK${i}=vm-${VMID}-disk-${i}${DISK_EXT:-}
-  eval DISK${i}_REF=${STORAGE}:${DISK_REF:-}${!disk}
-done
-msg_ok "Extracted KVM Disk Image"
-msg_info "Creating HAOS VM"
-qm create $VMID -agent 1${MACHINE} -tablet 0 -localtime 1 -bios ovmf${CPU_TYPE} -cores $CORE_COUNT -memory $RAM_SIZE \
-  -name $HN -tags community-script -net0 virtio,bridge=$BRG,macaddr=$MAC$VLAN$MTU -onboot 1 -ostype l26 -scsihw virtio-scsi-pci
-pvesm alloc $STORAGE $VMID $DISK0 4M 1>&/dev/null
-qm importdisk $VMID ${FILE%.*} $STORAGE ${DISK_IMPORT:-} 1>&/dev/null
+
+download_and_validate_xz "$URL" "$CACHE_FILE"
+
+msg_info "Creating Home Assistant OS VM shell"
+qm create $VMID -machine q35 -bios ovmf -agent 1 -tablet 0 -localtime 1 ${CPU_TYPE} \
+  -cores "$CORE_COUNT" -memory "$RAM_SIZE" -name "$HN" -tags community-script \
+  -net0 "virtio,bridge=$BRG,macaddr=$MAC$VLAN$MTU" -onboot 1 -ostype l26 -scsihw virtio-scsi-pci >/dev/null
+msg_ok "Created VM shell"
+
+extract_xz_with_pv "$CACHE_FILE" "$FILE_IMG"
+
+msg_info "Importing disk into storage ($STORAGE)"
+if qm disk import --help >/dev/null 2>&1; then
+  IMPORT_CMD=(qm disk import)
+else
+  IMPORT_CMD=(qm importdisk)
+fi
+IMPORT_OUT="$("${IMPORT_CMD[@]}" "$VMID" "$FILE_IMG" "$STORAGE" --format raw 2>&1 || true)"
+DISK_REF="$(printf '%s\n' "$IMPORT_OUT" | sed -n "s/.*successfully imported disk '\([^']\+\)'.*/\1/p" | tr -d "\r\"'")"
+[[ -z "$DISK_REF" ]] && DISK_REF="$(pvesm list "$STORAGE" | awk -v id="$VMID" '$5 ~ ("vm-"id"-disk-") {print $1":"$5}' | sort | tail -n1)"
+[[ -z "$DISK_REF" ]] && {
+  msg_error "Unable to determine imported disk reference."
+  echo "$IMPORT_OUT"
+  exit 1
+}
+msg_ok "Imported disk (${CL}${BL}${DISK_REF}${CL})"
+
+rm -f "$FILE_IMG"
+
+msg_info "Attaching EFI and root disk"
 qm set $VMID \
-  -efidisk0 ${DISK0_REF}${FORMAT} \
-  -scsi0 ${DISK1_REF},${DISK_CACHE}${THIN}size=32G \
-  -boot order=scsi0 \
-  -description "<div align='center'><a href='https://Helper-Scripts.com' target='_blank' rel='noopener noreferrer'><img src='https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/images/logo-81x112.png'/></a>
+  --efidisk0 ${STORAGE}:0,efitype=4m \
+  --scsi0 ${DISK_REF},ssd=1,discard=on \
+  --boot order=scsi0 \
+  --serial0 socket >/dev/null
+qm set $VMID --agent enabled=1 >/dev/null
+msg_ok "Attached EFI and root disk"
 
-  # Home Assistant OS
+msg_info "Resizing disk to $DISK_SIZE"
+qm resize $VMID scsi0 ${DISK_SIZE} >/dev/null
+msg_ok "Resized disk"
 
-  <a href='https://ko-fi.com/D1D7EP4GF'><img src='https://img.shields.io/badge/&#x2615;-Buy me a coffee-blue' /></a>
-  </div>" >/dev/null
-msg_ok "Created HAOS VM ${CL}${BL}(${HN})"
+DESCRIPTION=$(
+  cat <<EOF
+<div align='center'>
+  <a href='https://Helper-Scripts.com' target='_blank' rel='noopener noreferrer'>
+    <img src='https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/images/logo-81x112.png' alt='Logo' style='width:81px;height:112px;'/>
+  </a>
+
+  <h2 style='font-size: 24px; margin: 20px 0;'>Homeassistant OS VM</h2>
+
+  <p style='margin: 16px 0;'>
+    <a href='https://ko-fi.com/community_scripts' target='_blank' rel='noopener noreferrer'>
+      <img src='https://img.shields.io/badge/&#x2615;-Buy us a coffee-blue' alt='spend Coffee' />
+    </a>
+  </p>
+
+  <span style='margin: 0 10px;'>
+    <i class="fa fa-github fa-fw" style="color: #f5f5f5;"></i>
+    <a href='https://github.com/community-scripts/ProxmoxVE' target='_blank' rel='noopener noreferrer' style='text-decoration: none; color: #00617f;'>GitHub</a>
+  </span>
+  <span style='margin: 0 10px;'>
+    <i class="fa fa-comments fa-fw" style="color: #f5f5f5;"></i>
+    <a href='https://github.com/community-scripts/ProxmoxVE/discussions' target='_blank' rel='noopener noreferrer' style='text-decoration: none; color: #00617f;'>Discussions</a>
+  </span>
+  <span style='margin: 0 10px;'>
+    <i class="fa fa-exclamation-circle fa-fw" style="color: #f5f5f5;"></i>
+    <a href='https://github.com/community-scripts/ProxmoxVE/issues' target='_blank' rel='noopener noreferrer' style='text-decoration: none; color: #00617f;'>Issues</a>
+  </span>
+</div>
+EOF
+)
+qm set $VMID -description "$DESCRIPTION" >/dev/null
+msg_ok "Created Homeassistant OS VM ${CL}${BL}(${HN})"
+
+if whiptail --backtitle "Proxmox VE Helper Scripts" --title "Image Cache" \
+  --yesno "Keep downloaded Home Assistant OS image for future VMs?\n\nFile: $CACHE_FILE" 10 70; then
+  msg_ok "Keeping cached image"
+else
+  rm -f "$CACHE_FILE"
+  msg_ok "Deleted cached image"
+fi
+
 if [ "$START_VM" == "yes" ]; then
   msg_info "Starting Home Assistant OS VM"
   qm start $VMID
   msg_ok "Started Home Assistant OS VM"
 fi
 post_update_to_api "done" "none"
-msg_ok "Completed Successfully!\n"
-
-
+msg_ok "Completed successfully!\n"

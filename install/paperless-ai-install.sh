@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 community-scripts ORG
+# Copyright (c) 2021-2026 community-scripts ORG
 # Author: MickLesk (CanbiZ)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://github.com/clusterzx/paperless-ai
 
-source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
+source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
 color
 verb_ip6
 catch_errors
@@ -14,36 +14,37 @@ network_check
 update_os
 
 msg_info "Installing Dependencies"
-$STD apt-get install -y \
-	curl \
-	sudo \
-	mc \
-	gpg \
-  make \
-  gcc \
-  g++ \
+$STD apt install -y \
   build-essential
 msg_ok "Installed Dependencies"
 
-msg_info "Setting up Node.js Repository"
-mkdir -p /etc/apt/keyrings
-curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
-echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" >/etc/apt/sources.list.d/nodesource.list
-msg_ok "Set up Node.js Repository"
+msg_info "Installing Python3"
+$STD apt install -y \
+  python3-pip \
+  python3-dev \
+  python3-venv
+mkdir -p ~/.config/pip
+cat >~/.config/pip/pip.conf <<EOF
+[global]
+break-system-packages = true
+EOF
+msg_ok "Installed Python3"
 
-msg_info "Installing Node.js"
-$STD apt-get update
-$STD apt-get install -y nodejs
-msg_ok "Installed Node.js"
+NODE_VERSION="22" setup_nodejs
+fetch_and_deploy_gh_release "paperless-ai" "clusterzx/paperless-ai" "tarball"
 
 msg_info "Setup Paperless-AI"
-cd /opt
-RELEASE=$(curl -s https://api.github.com/repos/clusterzx/paperless-ai/releases/latest | grep "tag_name" | awk '{print substr($2, 3, length($2)-4) }')
-wget -q "https://github.com/clusterzx/paperless-ai/archive/refs/tags/v${RELEASE}.zip"
-unzip -q v${RELEASE}.zip
-mv paperless-ai-${RELEASE} /opt/paperless-ai
 cd /opt/paperless-ai
-$STD npm install
+$STD python3 -m venv /opt/paperless-ai/venv
+source /opt/paperless-ai/venv/bin/activate
+# TMPDIR to use container disk instead of tmpfs for large pip downloads (https://github.com/community-scripts/ProxmoxVE/issues/10338)
+export TMPDIR=/opt/paperless-ai/tmp
+mkdir -p "$TMPDIR"
+$STD pip install --upgrade pip
+$STD pip install --no-cache-dir -r requirements.txt
+rm -rf "$TMPDIR"
+mkdir -p data/chromadb
+$STD npm ci --only=production
 mkdir -p /opt/paperless-ai/data
 cat <<EOF >/opt/paperless-ai/data/.env
 PAPERLESS_API_URL=
@@ -67,32 +68,48 @@ API_KEY=
 CUSTOM_API_KEY=
 CUSTOM_BASE_URL=
 CUSTOM_MODEL=
+RAG_SERVICE_URL=http://localhost:8000
+RAG_SERVICE_ENABLED=true
 EOF
-echo "${RELEASE}" >"/opt/${APPLICATION}_version.txt"
 msg_ok "Setup Paperless-AI"
 
 msg_info "Creating Service"
 cat <<EOF >/etc/systemd/system/paperless-ai.service
 [Unit]
 Description=PaperlessAI Service
-After=network.target
+After=network.target paperless-rag.service
+Requires=paperless-rag.service
 
 [Service]
 WorkingDirectory=/opt/paperless-ai
-ExecStart=/usr/bin/npm start
+Environment="NODE_ENV=production"
+EnvironmentFile=/opt/paperless-ai/data/.env
+ExecStart=/usr/bin/node server.js
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
 EOF
-systemctl enable -q --now paperless-ai.service
+
+cat <<EOF >/etc/systemd/system/paperless-rag.service
+[Unit]
+Description=PaperlessAI-RAG Service
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/paperless-ai
+EnvironmentFile=/opt/paperless-ai/data/.env
+ExecStart=/opt/paperless-ai/venv/bin/python3 main.py --host 0.0.0.0 --port 8000 --initialize
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl enable -q --now paperless-rag
+sleep 5
+systemctl enable -q --now paperless-ai
 msg_ok "Created Service"
 
 motd_ssh
 customize
-
-msg_info "Cleaning up"
-rm -rf /opt/v${RELEASE}.zip
-$STD apt-get -y autoremove
-$STD apt-get -y autoclean
-msg_ok "Cleaned"
+cleanup_lxc

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 tteck
+# Copyright (c) 2021-2026 tteck
 # Author: tteck (tteckster)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://www.bunkerweb.io/
 
-source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
+source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
 color
 verb_ip6
 catch_errors
@@ -14,39 +14,35 @@ network_check
 update_os
 
 msg_info "Installing Dependencies"
-$STD apt-get install -y curl
-$STD apt-get install -y sudo
-$STD apt-get install -y mc
-$STD apt-get install -y gpg
-$STD apt-get install -y apt-transport-https
-$STD apt-get install -y lsb-release 
+$STD apt install -y \
+  apt-transport-https \
+  lsb-release
 msg_ok "Installed Dependencies"
 
-msg_info "Installing Nginx"
-wget -qO- https://nginx.org/keys/nginx_signing.key | gpg --dearmor >/usr/share/keyrings/nginx-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/debian $(lsb_release -cs) nginx" >/etc/apt/sources.list.d/nginx.list
-$STD apt-get update
-$STD apt-get install -y nginx=1.26.3*
-msg_ok "Installed Nginx"
-
-RELEASE=$(curl -s https://api.github.com/repos/bunkerity/bunkerweb/releases/latest | grep "tag_name" | awk '{print substr($2, 3, length($2)-4) }')
-msg_info "Installing BunkerWeb v${RELEASE} (Patience)"
-curl -fsSL "https://repo.bunkerweb.io/bunkerity/bunkerweb/gpgkey" | gpg --dearmor >/etc/apt/keyrings/bunkerity_bunkerweb-archive-keyring.gpg
-echo "deb [signed-by=/etc/apt/keyrings/bunkerity_bunkerweb-archive-keyring.gpg] https://repo.bunkerweb.io/bunkerity/bunkerweb/debian/ bookworm main" >/etc/apt/sources.list.d/bunkerity_bunkerweb.list
-$STD apt-get update
-$STD apt-get install -y bunkerweb=${RELEASE}
+RELEASE=$(get_latest_github_release "bunkerity/bunkerweb")
+msg_warn "WARNING: This script will run an external installer from a third-party source (install-bunkerweb.sh)."
+msg_warn "The following code is NOT maintained or audited by our repository."
+msg_warn "If you have any doubts or concerns, please review the installer code before proceeding:"
+msg_custom "${TAB3}${GATEWAY}${BGN}${CL}" "\e[1;34m" "→  https://github.com/bunkerity/bunkerweb/raw/v${RELEASE}/misc/install-bunkerweb.sh"
+echo
+read -r -p "${TAB3}Do you want to continue? [y/N]: " CONFIRM
+if [[ ! "$CONFIRM" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+  msg_error "Aborted by user. No changes have been made."
+  exit 10
+fi
+msg_info "Installing BunkerWeb (Patience)"
+curl -fsSL -o install-bunkerweb.sh "https://github.com/bunkerity/bunkerweb/raw/v${RELEASE}/misc/install-bunkerweb.sh"
+chmod +x install-bunkerweb.sh
+$STD ./install-bunkerweb.sh --yes
+$STD apt-mark unhold bunkerweb nginx
 cat <<EOF >/etc/apt/preferences.d/bunkerweb
 Package: bunkerweb
 Pin: version ${RELEASE}
 Pin-Priority: 1001
 EOF
-echo "${RELEASE}" >/opt/${APPLICATION}_version.txt
-msg_ok "Installed BunkerWeb v${RELEASE}"
+echo "${RELEASE}" >~/.bunkerweb
+msg_ok "Installed BunkerWeb"
 
 motd_ssh
 customize
-
-msg_info "Cleaning up"
-$STD apt-get -y autoremove
-$STD apt-get -y autoclean
-msg_ok "Cleaned"
+cleanup_lxc

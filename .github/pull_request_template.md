@@ -1,25 +1,27 @@
-## ✍️ Description  
-<!-- Provide a clear and concise description of your changes. -->  
+<!--🛑 New scripts must be submitted to [ProxmoxVED](https://github.com/community-scripts/ProxmoxVED) for testing.
+PRs without prior testing will be closed. -->
 
-## 🔗 Related PR / Discussion / Issue  
+## ✍️ Description
 
-Link: #
 
-## ✅ Prerequisites  
+## 🔗 Related Issue
 
-Before this PR can be reviewed, the following must be completed:  
+Fixes #
 
-- [] **Self-review performed** – Code follows established patterns and conventions.  
-- [] **Testing performed** – Changes have been thoroughly tested and verified.  
+## ✅ Prerequisites (**X** in brackets)
 
-## 🛠️ Type of Change  
+- [ ] **Self-review completed** – Code follows project standards.
+- [ ] **Tested thoroughly** – Changes work as expected.
+- [ ] **No security risks** – No hardcoded secrets, unnecessary privilege escalations, or permission issues.
 
-Select all that apply:
+---
 
-- [] 🆕 **New script** – A fully functional and tested script or script set.
-- [] 🐞 **Bug fix**  – Resolves an issue without breaking functionality.  
-- [] ✨ **New feature**  – Adds new, non-breaking functionality.  
-- [] 💥 **Breaking change**  – Alters existing functionality in a way that may require updates.  
+## 🛠️ Type of Change (**X** in brackets)
 
-## 📋 Additional Information (optional)  
-<!-- Provide extra context, screenshots, or references if needed. -->  
+- [ ] 🐞 **Bug fix** – Resolves an issue without breaking functionality.
+- [ ] ✨ **New feature** – Adds new, non-breaking functionality.
+- [ ] 💥 **Breaking change** – Alters existing functionality in a way that may require updates.
+- [ ] 🆕 **New script** – A fully functional and tested script or script set.
+- [ ] 🌍 **Website update** – Changes to website-related JSON files or metadata.
+- [ ] 🔧 **Refactoring / Code Cleanup** – Improves readability or maintainability without changing functionality.
+- [ ] 📝 **Documentation update** – Changes to `README`, `AppName.md`, `CONTRIBUTING.md`, or other docs.

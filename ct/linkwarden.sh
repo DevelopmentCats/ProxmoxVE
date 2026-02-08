@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-source <(curl -s https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
-# Copyright (c) 2021-2025 tteck
-# Author: tteck (tteckster)
+source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
+# Copyright (c) 2021-2026 community-scripts ORG
+# Author: MickLesk (CanbiZ)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://linkwarden.app/
 
 APP="Linkwarden"
-var_tags="bookmark"
-var_cpu="2"
-var_ram="2048"
-var_disk="12"
-var_os="ubuntu"
-var_version="22.04"
+var_tags="${var_tags:-bookmark}"
+var_cpu="${var_cpu:-2}"
+var_ram="${var_ram:-4096}"
+var_disk="${var_disk:-12}"
+var_os="${var_os:-ubuntu}"
+var_version="${var_version:-24.04}"
 
 header_info "$APP"
 variables
@@ -26,48 +26,53 @@ function update_script() {
     msg_error "No ${APP} Installation Found!"
     exit
   fi
-  RELEASE=$(curl -s https://api.github.com/repos/linkwarden/linkwarden/releases/latest | grep "tag_name" | awk '{print substr($2, 2, length($2)-3) }')
-  if [[ "${RELEASE}" != "$(cat /opt/${APP}_version.txt)" ]] || [[ ! -f /opt/${APP}_version.txt ]]; then
-    msg_info "Stopping ${APP}"
+  if check_for_gh_release "linkwarden" "linkwarden/linkwarden"; then
+    NODE_VERSION="22" NODE_MODULE="yarn@latest" setup_nodejs
+    msg_info "Stopping Service"
     systemctl stop linkwarden
-    msg_ok "Stopped ${APP}"
+    msg_ok "Stopped Service"
 
-    msg_info "Updating Rust"
-    $STD apt-get install -y build-essential
-    $STD curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-    source $HOME/.cargo/env
-    echo 'export PATH=/usr/local/cargo/bin:$PATH' >> /etc/profile
-    source /etc/profile
-    $STD cargo install monolith
-    msg_ok "Updated Rust"
+    RUST_CRATES="monolith" setup_rust
 
-    msg_info "Updating ${APP} to ${RELEASE}"
-    cd /opt
+    msg_info "Backing up data"
     mv /opt/linkwarden/.env /opt/.env
+    [ -d /opt/linkwarden/data ] && mv /opt/linkwarden/data /opt/data.bak
     rm -rf /opt/linkwarden
-    RELEASE=$(curl -s https://api.github.com/repos/linkwarden/linkwarden/releases/latest | grep "tag_name" | awk '{print substr($2, 2, length($2)-3) }')
-    wget -q "https://github.com/linkwarden/linkwarden/archive/refs/tags/${RELEASE}.zip"
-    unzip -q ${RELEASE}.zip
-    mv linkwarden-${RELEASE:1} /opt/linkwarden
+    msg_ok "Backed up data"
+
+    fetch_and_deploy_gh_release "linkwarden" "linkwarden/linkwarden" "tarball"
+
+    msg_info "Updating Linkwarden"
     cd /opt/linkwarden
+    yarn_ver="4.12.0"
+    if [[ -f package.json ]]; then
+      pkg_manager=$(jq -r '.packageManager // empty' package.json 2>/dev/null || true)
+      if [[ -n "$pkg_manager" && "$pkg_manager" == yarn@* ]]; then
+        yarn_spec="${pkg_manager#yarn@}"
+        yarn_ver="${yarn_spec%%+*}"
+      fi
+    fi
+    if command -v corepack >/dev/null 2>&1; then
+      $STD corepack enable
+      $STD corepack prepare "yarn@${yarn_ver}" --activate || true
+    fi
     $STD yarn
     $STD npx playwright install-deps
-    $STD yarn playwright install
-    cp /opt/.env /opt/linkwarden/.env
-    $STD yarn build
-    $STD yarn prisma migrate deploy
-    echo "${RELEASE}" >/opt/${APP}_version.txt
-    msg_ok "Updated ${APP} to ${RELEASE}"
+    $STD npx playwright install
+    mv /opt/.env /opt/linkwarden/.env
+    $STD yarn prisma:generate
+    $STD yarn web:build
+    $STD yarn prisma:deploy
+    [ -d /opt/data.bak ] && mv /opt/data.bak /opt/linkwarden/data
+    rm -rf ~/.cargo/registry ~/.cargo/git ~/.cargo/.package-cache
+    rm -rf /root/.cache/yarn
+    rm -rf /opt/linkwarden/.next/cache
+    msg_ok "Updated Linkwarden"
 
-    msg_info "Starting ${APP}"
+    msg_info "Starting Service"
     systemctl start linkwarden
-    msg_ok "Started ${APP}"
-    msg_info "Cleaning up"
-    rm -rf /opt/${RELEASE}.zip
-    msg_ok "Cleaned"
-    msg_ok "Updated Successfully"
-  else
-    msg_ok "No update required.  ${APP} is already at ${RELEASE}."
+    msg_ok "Started Service"
+    msg_ok "Updated successfully!"
   fi
   exit
 }
@@ -76,7 +81,7 @@ start
 build_container
 description
 
-msg_ok "Completed Successfully!\n"
+msg_ok "Completed successfully!\n"
 echo -e "${CREATING}${GN}${APP} setup has been successfully initialized!${CL}"
 echo -e "${INFO}${YW} Access it using the following URL:${CL}"
 echo -e "${TAB}${GATEWAY}${BGN}http://${IP}:3000${CL}"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 community-scripts ORG
-# Author: quantumryuu
+# Copyright (c) 2021-2026 community-scripts ORG
+# Author: quantumryuu | Co-Author: Slaviša Arežina (tremor021)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://firefly-iii.org/
 
@@ -13,59 +13,33 @@ setting_up_container
 network_check
 update_os
 
-msg_info "Installing Dependencies"
-$STD apt-get install -y \
-    curl \
-    mc \
-    sudo
-curl -sSLo /usr/share/keyrings/deb.sury.org-php.gpg https://packages.sury.org/php/apt.gpg
-echo "deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ bookworm main" >/etc/apt/sources.list.d/php.list
-$STD apt-get update
-$STD apt-get install -y \
-    apache2 \
-    libapache2-mod-php8.4 \
-    php8.4-{bcmath,cli,intl,curl,zip,gd,xml,mbstring,mysql} \
-    mariadb-server \
-    composer
-msg_ok "Installed Dependencies"
+PHP_VERSION="8.4" PHP_APACHE="YES" setup_php
+setup_composer
+setup_mariadb
+MARIADB_DB_NAME="firefly" MARIADB_DB_USER="firefly" setup_mariadb_db
 
-msg_info "Setting up database"
-DB_NAME=firefly
-DB_USER=firefly
-DB_PASS=$(openssl rand -base64 18 | tr -dc 'a-zA-Z0-9' | head -c13)
-MYSQL_VERSION=$(mysql --version | grep -oP 'Distrib \K[0-9]+\.[0-9]+\.[0-9]+')
-mysql -u root -e "CREATE DATABASE $DB_NAME;"
-mysql -u root -e "CREATE USER '$DB_USER'@'localhost' IDENTIFIED WITH mysql_native_password AS PASSWORD('$DB_PASS');"
-mysql -u root -e "GRANT ALL ON $DB_NAME.* TO '$DB_USER'@'localhost'; FLUSH PRIVILEGES;"
-{
-    echo "Firefly-Credentials"
-    echo "Firefly Database User: $DB_USER"
-    echo "Firefly Database Password: $DB_PASS"
-    echo "Firefly Database Name: $DB_NAME"
-} >> ~/firefly.creds
-msg_ok "Set up database"
+fetch_and_deploy_gh_release "firefly" "firefly-iii/firefly-iii" "prebuild" "latest" "/opt/firefly" "FireflyIII-*.zip"
+fetch_and_deploy_gh_release "dataimporter" "firefly-iii/data-importer" "prebuild" "latest" "/opt/firefly/dataimporter" "DataImporter-v*.tar.gz"
 
-msg_info "Installing Firefly III (Patience)"
-RELEASE=$(curl -s https://api.github.com/repos/firefly-iii/firefly-iii/releases/latest | grep "tag_name" | awk '{print substr($2, 3, length($2)-4)}')
-cd /opt
-wget -q "https://github.com/firefly-iii/firefly-iii/releases/download/v${RELEASE}/FireflyIII-v${RELEASE}.tar.gz"
-mkdir -p /opt/firefly
-tar -xzf FireflyIII-v${RELEASE}.tar.gz -C /opt/firefly
+msg_info "Configuring Firefly III (Patience)"
 chown -R www-data:www-data /opt/firefly
 chmod -R 775 /opt/firefly/storage
 cd /opt/firefly
 cp .env.example .env
 sed -i "s/DB_HOST=.*/DB_HOST=localhost/" /opt/firefly/.env
-sed -i "s/DB_PASSWORD=.*/DB_PASSWORD=$DB_PASS/" /opt/firefly/.env
-echo "export COMPOSER_ALLOW_SUPERUSER=1" >> ~/.bashrc
-source ~/.bashrc
+sed -i "s/DB_PASSWORD=.*/DB_PASSWORD=$MARIADB_DB_PASS/" /opt/firefly/.env
 $STD composer install --no-dev --no-plugins --no-interaction
 $STD php artisan firefly:upgrade-database
 $STD php artisan firefly:correct-database
 $STD php artisan firefly:report-integrity
 $STD php artisan firefly:laravel-passport-keys
-echo "${RELEASE}" >"/opt/${APPLICATION}_version.txt"
-msg_ok "Installed Firefly III"
+msg_ok "Configured Firefly III"
+
+msg_info "Configuring Data Importer"
+cp /opt/firefly/dataimporter/.env.example /opt/firefly/dataimporter/.env
+sed -i "s#FIREFLY_III_URL=#FIREFLY_III_URL=http://${LOCAL_IP}#g" /opt/firefly/dataimporter/.env
+chown -R www-data:www-data /opt/firefly
+msg_ok "Configured Data Importer"
 
 msg_info "Creating Service"
 cat <<EOF >/etc/apache2/sites-available/firefly.conf
@@ -79,6 +53,19 @@ cat <<EOF >/etc/apache2/sites-available/firefly.conf
         Require all granted
     </Directory>
   
+  RedirectMatch 301 ^/dataimporter$ /dataimporter/
+
+  Alias /dataimporter/ /opt/firefly/dataimporter/public/
+
+    <Directory /opt/firefly/dataimporter/public/>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+    <FilesMatch \.php$>
+        SetHandler application/x-httpd-php
+    </FilesMatch>
+
     ErrorLog /var/log/apache2/error.log
     CustomLog /var/log/apache2/access.log combined
 
@@ -88,15 +75,10 @@ chown www-data:www-data /opt/firefly/storage/oauth-*.key
 $STD a2enmod php8.4
 $STD a2enmod rewrite
 $STD a2ensite firefly.conf
-$STD a2dissite 000-default.conf  
+$STD a2dissite 000-default.conf
 $STD systemctl reload apache2
 msg_ok "Created Service"
 
 motd_ssh
 customize
-
-msg_info "Cleaning up"
-rm -rf /opt/FireflyIII-v${RELEASE}.tar.gz
-$STD apt-get -y autoremove
-$STD apt-get -y autoclean
-msg_ok "Cleaned"
+cleanup_lxc

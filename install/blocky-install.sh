@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 tteck
+# Copyright (c) 2021-2026 tteck
 # Author: tteck (tteckster)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
-# Source: https://0xerr0r.github.io/blocky/latest/
+# Source: https://0xerr0r.github.io/blocky
 
-source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
+source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
 color
 verb_ip6
 catch_errors
@@ -13,20 +13,12 @@ setting_up_container
 network_check
 update_os
 
-msg_info "Installing Dependencies"
-$STD apt-get install -y curl
-$STD apt-get install -y sudo
-$STD apt-get install -y mc
-msg_ok "Installed Dependencies"
+fetch_and_deploy_gh_release "blocky" "0xERR0R/blocky" "prebuild" "latest" "/opt/blocky" "blocky_*_Linux_x86_64.tar.gz"
 
-msg_info "Installing Blocky"
-if systemctl is-active systemd-resolved > /dev/null 2>&1; then
+msg_info "Configuring Blocky"
+if systemctl is-active systemd-resolved >/dev/null 2>&1; then
   systemctl disable -q --now systemd-resolved
 fi
-mkdir /opt/blocky
-RELEASE=$(curl -s https://api.github.com/repos/0xERR0R/blocky/releases/latest | grep "tag_name" | awk '{print substr($2, 3, length($2)-4) }')
-wget -qO- https://github.com/0xERR0R/blocky/releases/download/v${RELEASE}/blocky_v${RELEASE}_Linux_x86_64.tar.gz | tar -xzf - -C /opt/blocky/
-
 cat <<EOF >/opt/blocky/config.yml
 # configuration documentation: https://0xerr0r.github.io/blocky/latest/configuration/
 
@@ -69,7 +61,7 @@ log:
   # optional: Log level (one from trace, debug, info, warn, error). Default: info
   level: info
 EOF
-msg_ok "Installed Blocky"
+msg_ok "Configured Blocky"
 
 msg_info "Creating Service"
 cat <<EOF >/etc/systemd/system/blocky.service
@@ -83,13 +75,9 @@ ExecStart=/opt/blocky/./blocky --config config.yml
 [Install]
 WantedBy=multi-user.target
 EOF
-$STD systemctl enable --now blocky
+$STD systemctl enable -q --now blocky
 msg_ok "Created Service"
 
 motd_ssh
 customize
-
-msg_info "Cleaning up"
-$STD apt-get -y autoremove
-$STD apt-get -y autoclean
-msg_ok "Cleaned"
+cleanup_lxc

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 community-scripts ORG
-# Author: tremor021
+# Copyright (c) 2021-2026 community-scripts ORG
+# Author: Slaviša Arežina (tremor021)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://github.com/Suwayomi/Suwayomi-Server
 
-source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
+source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
 color
 verb_ip6
 catch_errors
@@ -14,21 +14,12 @@ network_check
 update_os
 
 msg_info "Installing Dependencies"
-$STD apt-get install -y \
-  curl \
-  sudo \
-  mc \
-  openjdk-17-jre \
-  libc++-dev
+$STD apt install -y libc++-dev
 msg_ok "Installed Dependencies"
 
-msg_info "Settting up Suwayomi-Server"
-URL=$(curl -s https://api.github.com/repos/Suwayomi/Suwayomi-Server/releases/latest | grep "browser_download_url" | awk '{print substr($2, 2, length($2)-2) }' |  tail -n+2 | head -n 1)
-RELEASE=$(curl -s https://api.github.com/repos/Suwayomi/Suwayomi-Server/releases/latest | grep "tag_name" | awk '{print substr($2, 2, length($2)-3) }')
-wget -q $URL
-$STD dpkg -i *.deb
-echo ${RELEASE} >/opt/suwayomi-server_version.txt
-msg_ok "Done setting up Suwayomi-Server"
+JAVA_VERSION=21 setup_java
+fetch_and_deploy_gh_release "suwayomi-server" "Suwayomi/Suwayomi-Server" "binary"
+
 msg_info "Creating Service"
 cat <<EOF >/etc/systemd/system/suwayomi-server.service
 [Unit]
@@ -44,10 +35,7 @@ WantedBy=multi-user.target
 EOF
 systemctl enable -q --now suwayomi-server
 msg_ok "Created Service"
+
 motd_ssh
 customize
-msg_info "Cleaning up"
-rm -f *.deb
-$STD apt-get -y autoremove
-$STD apt-get -y autoclean
-msg_ok "Cleaned"
+cleanup_lxc

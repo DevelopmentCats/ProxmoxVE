@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-source <(curl -s https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
-# Copyright (c) 2021-2025 community-scripts ORG
+source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
+# Copyright (c) 2021-2026 community-scripts ORG
 # Author: kristocopani
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://semaphoreui.com/
 
 APP="Semaphore"
-var_tags="dev_ops"
-var_cpu="2"
-var_ram="2048"
-var_disk="4"
-var_os="debian"
-var_version="12"
-var_unprivileged="1"
+var_tags="${var_tags:-dev_ops}"
+var_cpu="${var_cpu:-2}"
+var_ram="${var_ram:-2048}"
+var_disk="${var_disk:-4}"
+var_os="${var_os:-ubuntu}"
+var_version="${var_version:-24.04}"
+var_unprivileged="${var_unprivileged:-1}"
 
 header_info "$APP"
 variables
@@ -28,29 +28,17 @@ function update_script() {
     msg_error "No ${APP} Installation Found!"
     exit
   fi
-  RELEASE=$(curl -s https://api.github.com/repos/semaphoreui/semaphore/releases/latest | grep "tag_name" | awk '{print substr($2, 3, length($2)-4) }')
-  if [[ ! -f /opt/${APP}_version.txt ]] || [[ "${RELEASE}" != "$(cat /opt/${APP}_version.txt)" ]]; then
+  if check_for_gh_release "semaphore" "semaphoreui/semaphore"; then
     msg_info "Stopping Service"
     systemctl stop semaphore
     msg_ok "Stopped Service"
 
-    msg_info "Updating ${APP} to v${RELEASE}"
-    cd /opt
-    wget -q https://github.com/semaphoreui/semaphore/releases/download/v${RELEASE}/semaphore_${RELEASE}_linux_amd64.deb
-    $STD dpkg -i semaphore_${RELEASE}_linux_amd64.deb
-    echo "${RELEASE}" >"/opt/${APP}_version.txt"
-    msg_ok "Updated ${APP} to v${RELEASE}"
+    fetch_and_deploy_gh_release "semaphore" "semaphoreui/semaphore" "binary" "latest" "/opt/semaphore" "semaphore_*_linux_amd64.deb"
 
     msg_info "Starting Service"
     systemctl start semaphore
     msg_ok "Started Service"
-
-    msg_info "Cleaning up"
-    rm -rf /opt/semaphore_${RELEASE}_linux_amd64.deb
-    msg_ok "Cleaned"
-    msg_ok "Updated Successfully"
-  else
-    msg_ok "No update required. ${APP} is already at v${RELEASE}."
+    msg_ok "Updated successfully!"
   fi
   exit
 }
@@ -59,7 +47,7 @@ start
 build_container
 description
 
-msg_ok "Completed Successfully!\n"
+msg_ok "Completed successfully!\n"
 echo -e "${CREATING}${GN}${APP} setup has been successfully initialized!${CL}"
 echo -e "${INFO}${YW} Access it using the following URL:${CL}"
 echo -e "${TAB}${GATEWAY}${BGN}http://${IP}:3000${CL}"

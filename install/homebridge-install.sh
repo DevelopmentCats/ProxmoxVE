@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 tteck
+# Copyright (c) 2021-2026 tteck
 # Author: tteck (tteckster)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://homebridge.io/
 
-source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
+source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
 color
 verb_ip6
 catch_errors
@@ -14,27 +14,21 @@ network_check
 update_os
 
 msg_info "Installing Dependencies"
-$STD apt-get install -y curl
-$STD apt-get install -y sudo
-$STD apt-get install -y mc
-$STD apt-get install -y avahi-daemon
-$STD apt-get install -y gnupg2
+$STD apt install -y avahi-daemon
 msg_ok "Installed Dependencies"
 
 msg_info "Setting up Homebridge Repository"
-curl -sSf https://repo.homebridge.io/KEY.gpg | gpg --dearmor >/etc/apt/trusted.gpg.d/homebridge.gpg
-echo 'deb [signed-by=/etc/apt/trusted.gpg.d/homebridge.gpg] https://repo.homebridge.io stable main' >/etc/apt/sources.list.d/homebridge.list
+setup_deb822_repo \
+  "homebridge" \
+  "https://repo.homebridge.io/KEY.gpg" \
+  "https://repo.homebridge.io" \
+  "stable"
 msg_ok "Set up Homebridge Repository"
 
 msg_info "Installing Homebridge"
-$STD apt update
-$STD apt-get install -y homebridge
+$STD apt install -y homebridge
 msg_ok "Installed Homebridge"
 
 motd_ssh
 customize
-
-msg_info "Cleaning up"
-$STD apt-get -y autoremove
-$STD apt-get -y autoclean
-msg_ok "Cleaned"
+cleanup_lxc

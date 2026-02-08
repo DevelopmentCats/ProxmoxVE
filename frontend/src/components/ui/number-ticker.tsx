@@ -1,6 +1,6 @@
 "use client";
 
-import { useInView, useMotionValue, useSpring } from "framer-motion";
+import { useInView, useMotionValue, useSpring } from "motion/react";
 import { useEffect, useRef } from "react";
 
 import { cn } from "@/lib/utils";
@@ -30,10 +30,10 @@ export default function NumberTicker({
   });
 
   useEffect(() => {
-    isInView &&
-      setTimeout(() => {
-        motionValue.set(direction === "down" ? 0 : value);
-      }, delay * 1000);
+    isInView
+    && setTimeout(() => {
+      motionValue.set(direction === "down" ? 0 : value);
+    }, delay * 1000);
   }, [motionValue, isInView, delay, value, direction]);
 
   useEffect(

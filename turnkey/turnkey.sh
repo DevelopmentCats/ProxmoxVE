@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright (c) 2021-2025 tteck
+# Copyright (c) 2021-2026 tteck
 # Author: tteck (tteckster)
 # License: MIT
 # https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
@@ -42,6 +42,29 @@ function msg() {
   local TEXT="$1"
   echo -e "$TEXT"
 }
+function validate_container_id() {
+  local ctid="$1"
+  # Check if ID is numeric
+  if ! [[ "$ctid" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+  # Check if config file exists for VM or LXC
+  if [[ -f "/etc/pve/qemu-server/${ctid}.conf" ]] || [[ -f "/etc/pve/lxc/${ctid}.conf" ]]; then
+    return 1
+  fi
+  # Check if ID is used in LVM logical volumes
+  if lvs --noheadings -o lv_name 2>/dev/null | grep -qE "(^|[-_])${ctid}($|[-_])"; then
+    return 1
+  fi
+  return 0
+}
+function get_valid_container_id() {
+  local suggested_id="${1:-$(pvesh get /cluster/nextid)}"
+  while ! validate_container_id "$suggested_id"; do
+    suggested_id=$((suggested_id + 1))
+  done
+  echo "$suggested_id"
+}
 function cleanup_ctid() {
   if pct status $CTID &>/dev/null; then
     if [ "$(pct status $CTID | awk '{print $2}')" == "running" ]; then
@@ -56,7 +79,7 @@ if systemctl is-active -q ping-instances.service; then
   systemctl stop ping-instances.service
 fi
 header_info
-whiptail --backtitle "Proxmox VE Helper Scripts" --title "TurnKey LXCs" --yesno "This will allow for the creation of one of the many TurnKey LXC Containers. Proceed?" 10 68 || exit
+whiptail --backtitle "Proxmox VE Helper Scripts" --title "TurnKey LXCs" --yesno "This will allow for the creation of one of the many TurnKey LXC Containers. Proceed?" 10 68
 TURNKEY_MENU=()
 MSG_MAX_LENGTH=0
 while read -r TAG ITEM; do
@@ -79,6 +102,7 @@ mediaserver Media Server
 nextcloud Nextcloud
 observium Observium
 odoo Odoo
+openldap OpenLDAP
 openvpn OpenVPN
 owncloud ownCloud
 phpbb phpBB
@@ -88,7 +112,7 @@ wordpress Wordpress
 zoneminder ZoneMinder
 EOF
 )
-turnkey=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "TurnKey LXCs" --radiolist "\nSelect a TurnKey LXC to create:\n" 16 $((MSG_MAX_LENGTH + 58)) 6 "${TURNKEY_MENU[@]}" 3>&1 1>&2 2>&3 | tr -d '"') || exit
+turnkey=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "TurnKey LXCs" --radiolist "\nSelect a TurnKey LXC to create:\n" 16 $((MSG_MAX_LENGTH + 58)) 6 "${TURNKEY_MENU[@]}" 3>&1 1>&2 2>&3 | tr -d '"')
 [ -z "$turnkey" ] && {
   whiptail --backtitle "Proxmox VE Helper Scripts" --title "No TurnKey LXC Selected" --msgbox "It appears that no TurnKey LXC container was selected" 10 68
   msg "Done"
@@ -97,11 +121,31 @@ turnkey=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "TurnKey LXCs
 
 # Setup script environment
 PASS="$(openssl rand -base64 8)"
-CTID=$(pvesh get /cluster/nextid)
+# Prompt user to confirm container ID
+while true; do
+  CTID=$(whiptail --backtitle "Container ID" --title "Choose the Container ID" --inputbox "Enter the container ID..." 8 40 $(pvesh get /cluster/nextid) 3>&1 1>&2 2>&3)
+
+  # Check if user cancelled
+  [ -z "$CTID" ] && die "No Container ID selected"
+
+  # Validate Container ID
+  if ! validate_container_id "$CTID"; then
+    SUGGESTED_ID=$(get_valid_container_id "$CTID")
+    if whiptail --backtitle "Container ID" --title "ID Already In Use" --yesno "Container/VM ID $CTID is already in use.\n\nWould you like to use the next available ID ($SUGGESTED_ID)?" 10 58; then
+      CTID="$SUGGESTED_ID"
+      break
+    fi
+    # User declined, loop back to input
+  else
+    break
+  fi
+done
+# Prompt user to confirm Hostname
+HOST_NAME=$(whiptail --backtitle "Hostname" --title "Choose the Hostname" --inputbox "Enter the containers Hostname..." 8 40 "turnkey-${turnkey}" 3>&1 1>&2 2>&3)
 PCT_OPTIONS="
     -features keyctl=1,nesting=1
-    -hostname turnkey-${turnkey}
-    -tags proxmox-helper-scripts
+    -hostname $HOST_NAME
+    -tags community-script
     -onboot 1
     -cores 2
     -memory 2048
@@ -154,7 +198,7 @@ function select_storage() {
     local STORAGE
     while [ -z "${STORAGE:+x}" ]; do
       STORAGE=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "Storage Pools" --radiolist \
-        "Which storage pool you would like to use for the ${CONTENT_LABEL,,}?\n\n" \
+        "Which storage pool would you like to use for the ${CONTENT_LABEL,,}?\n\n" \
         16 $(($MSG_MAX_LENGTH + 23)) 6 \
         "${MENU[@]}" 3>&1 1>&2 2>&3) || die "Menu aborted."
     done
@@ -163,11 +207,11 @@ function select_storage() {
 }
 
 # Get template storage
-TEMPLATE_STORAGE=$(select_storage template) || exit
+TEMPLATE_STORAGE=$(select_storage template)
 info "Using '$TEMPLATE_STORAGE' for template storage."
 
 # Get container storage
-CONTAINER_STORAGE=$(select_storage container) || exit
+CONTAINER_STORAGE=$(select_storage container)
 info "Using '$CONTAINER_STORAGE' for container storage."
 
 # Update LXC template list
@@ -198,10 +242,19 @@ pct create $CTID ${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE} ${PCT_OPTIONS[@]} >/dev/
 # Save password
 echo "TurnKey ${turnkey} password: ${PASS}" >>~/turnkey-${turnkey}.creds # file is located in the Proxmox root directory
 
+# If turnkey is "OpenVPN", add access to the tun device
+TUN_DEVICE_REQUIRED=("openvpn") # Setup this way in case future turnkeys also need tun access
+if printf '%s\n' "${TUN_DEVICE_REQUIRED[@]}" | grep -qw "${turnkey}"; then
+  info "${turnkey} requires access to /dev/net/tun on the host. Modifying the container configuration to allow this."
+  echo "lxc.cgroup2.devices.allow: c 10:200 rwm" >>/etc/pve/lxc/${CTID}.conf
+  echo "lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file 0 0" >>/etc/pve/lxc/${CTID}.conf
+  sleep 5
+fi
+
 # Start container
 msg "Starting LXC Container..."
 pct start "$CTID"
-sleep 5
+sleep 10
 
 # Get container IP
 set +euo pipefail # Turn off error checking
@@ -238,4 +291,5 @@ info "Proceed to the LXC console to complete the setup."
 echo
 info "login: root"
 info "password: $PASS"
+info "(credentials also stored in the root user's root directory in the 'turnkey-${turnkey}.creds' file.)"
 echo

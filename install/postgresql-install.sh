@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 tteck
+# Copyright (c) 2021-2026 tteck
 # Author: tteck (tteckster)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://www.postgresql.org/
 
-source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
+source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
 color
 verb_ip6
 catch_errors
@@ -13,24 +13,14 @@ setting_up_container
 network_check
 update_os
 
-msg_info "Installing Dependencies"
-$STD apt-get install -y curl
-$STD apt-get install -y sudo
-$STD apt-get install -y mc
-$STD apt-get install -y gnupg
-msg_ok "Installed Dependencies"
+read -r -p "${TAB3}Enter PostgreSQL version (15/16/17/18): " ver
+[[ $ver =~ ^(15|16|17|18)$ ]] || {
+  echo "Invalid version"
+  exit 1
+}
+PG_VERSION=$ver setup_postgresql
 
-msg_info "Setting up PostgreSQL Repository"
-VERSION="$(awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release)"
-echo "deb http://apt.postgresql.org/pub/repos/apt ${VERSION}-pgdg main" >/etc/apt/sources.list.d/pgdg.list
-curl -sSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor --output /etc/apt/trusted.gpg.d/postgresql.gpg
-msg_ok "Setup PostgreSQL Repository"
-
-msg_info "Installing PostgreSQL"
-$STD apt-get update
-$STD apt-get install -y postgresql
-
-cat <<EOF >/etc/postgresql/17/main/pg_hba.conf
+cat <<EOF >/etc/postgresql/$ver/main/pg_hba.conf
 # PostgreSQL Client Authentication Configuration File
 local   all             postgres                                peer
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
@@ -49,7 +39,7 @@ host    replication     all             127.0.0.1/32            scram-sha-256
 host    replication     all             ::1/128                 scram-sha-256
 EOF
 
-cat <<EOF >/etc/postgresql/17/main/postgresql.conf
+cat <<EOF >/etc/postgresql/$ver/main/postgresql.conf
 # -----------------------------
 # PostgreSQL configuration file
 # -----------------------------
@@ -58,10 +48,10 @@ cat <<EOF >/etc/postgresql/17/main/postgresql.conf
 # FILE LOCATIONS
 #------------------------------------------------------------------------------
 
-data_directory = '/var/lib/postgresql/17/main'       
-hba_file = '/etc/postgresql/17/main/pg_hba.conf'     
-ident_file = '/etc/postgresql/17/main/pg_ident.conf'   
-external_pid_file = '/var/run/postgresql/17-main.pid'                   
+data_directory = '/var/lib/postgresql/$ver/main'       
+hba_file = '/etc/postgresql/$ver/main/pg_hba.conf'     
+ident_file = '/etc/postgresql/$ver/main/pg_ident.conf'   
+external_pid_file = '/var/run/postgresql/$ver-main.pid'                   
 
 #------------------------------------------------------------------------------
 # CONNECTIONS AND AUTHENTICATION
@@ -107,7 +97,7 @@ log_timezone = 'Etc/UTC'
 # PROCESS TITLE
 #------------------------------------------------------------------------------
 
-cluster_name = '17/main'                
+cluster_name = '$ver/main'                
 
 #------------------------------------------------------------------------------
 # CLIENT CONNECTION DEFAULTS
@@ -130,10 +120,10 @@ default_text_search_config = 'pg_catalog.english'
 include_dir = 'conf.d'                  
 EOF
 
-sudo systemctl restart postgresql
+systemctl restart postgresql
 msg_ok "Installed PostgreSQL"
 
-read -r -p "Would you like to add Adminer? <y/N> " prompt
+read -r -p "${TAB3}Would you like to add Adminer? <y/N> " prompt
 if [[ "${prompt,,}" =~ ^(y|yes)$ ]]; then
   msg_info "Installing Adminer"
   $STD apt install -y adminer
@@ -144,8 +134,4 @@ fi
 
 motd_ssh
 customize
-
-msg_info "Cleaning up"
-$STD apt-get -y autoremove
-$STD apt-get -y autoclean
-msg_ok "Cleaned"
+cleanup_lxc

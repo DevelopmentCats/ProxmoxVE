@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-source <(curl -s https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
-# Copyright (c) 2021-2025 community-scripts ORG
+source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
+# Copyright (c) 2021-2026 community-scripts ORG
 # Author: MickLesk (Canbiz)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://nodebb.org/
 
 APP="NodeBB"
-var_tags="forum"
-var_disk="10"
-var_cpu="4"
-var_ram="2048"
-var_os="ubuntu"
-var_version="24.04"
-var_unprivileged="1"
+var_tags="${var_tags:-forum}"
+var_disk="${var_disk:-10}"
+var_cpu="${var_cpu:-4}"
+var_ram="${var_ram:-2048}"
+var_os="${var_os:-ubuntu}"
+var_version="${var_version:-24.04}"
+var_unprivileged="${var_unprivileged:-1}"
 
 # App Output & Base Settings
 header_info "$APP"
@@ -30,25 +30,21 @@ function update_script() {
     msg_error "No ${APP} Installation Found!"
     exit
   fi
-
-  RELEASE=$(curl -s https://api.github.com/repos/NodeBB/NodeBB/releases/latest | grep "tag_name" | awk '{print substr($2, 3, length($2)-4) }')
-  if [[ "${RELEASE}" != "$(cat /opt/${APP}_version.txt)" ]] || [[ ! -f /opt/${APP}_version.txt ]]; then
-    msg_info "Stopping ${APP}"
+  if check_for_gh_release "nodebb" "NodeBB/NodeBB"; then
+    msg_info "Stopping Service"
     systemctl stop nodebb
-    msg_ok "Stopped ${APP}"
+    msg_ok "Stopped Service"
 
-    msg_info "Updating ${APP} to v${RELEASE}"
+    msg_info "Updating ${APP}"
     cd /opt/nodebb
     $STD ./nodebb upgrade
-    echo "${RELEASE}" >/opt/${APP}_version.txt
-    msg_ok "Updated ${APP} to v${RELEASE}"
+    echo "${CHECK_UPDATE_RELEASE}" >~/.nodebb
+    msg_ok "Updated ${APP}"
 
-    msg_info "Starting ${APP}"
+    msg_info "Starting Service"
     systemctl start nodebb
-    msg_ok "Started ${APP}"
-    msg_ok "Updated Successfully"
-  else
-    msg_ok "No update required. ${APP} is already at v${RELEASE}."
+    msg_ok "Started Service"
+    msg_ok "Updated successfully!"
   fi
   exit
 }
@@ -57,7 +53,7 @@ start
 build_container
 description
 
-msg_ok "Completed Successfully!\n"
+msg_ok "Completed successfully!\n"
 echo -e "${CREATING}${GN}${APP} setup has been successfully initialized!${CL}"
 echo -e "${INFO}${YW} Access it using the following URL:${CL}"
 echo -e "${TAB}${GATEWAY}${BGN}http://${IP}:4567${CL}"

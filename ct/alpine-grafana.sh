@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-source <(curl -s https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
-# Copyright (c) 2021-2025 tteck
+source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
+# Copyright (c) 2021-2026 tteck
 # Author: tteck (tteckster)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://grafana.com/
 
 APP="Alpine-Grafana"
-var_tags="alpine;monitoring"
-var_cpu="1"
-var_ram="256"
-var_disk="1"
-var_os="alpine"
-var_version="3.21"
-var_unprivileged="1"
+var_tags="${var_tags:-alpine;monitoring}"
+var_cpu="${var_cpu:-1}"
+var_ram="${var_ram:-256}"
+var_disk="${var_disk:-1}"
+var_os="${var_os:-alpine}"
+var_version="${var_version:-3.23}"
+var_unprivileged="${var_unprivileged:-1}"
 
 header_info "$APP"
 variables
@@ -39,27 +39,31 @@ function update_script() {
     header_info
     case $CHOICE in
     1)
-      apk update && apk upgrade
+      $STD apk -U upgrade
+      msg_ok "Updated successfully!"
       exit
       ;;
     2)
       sed -i -e "s/cfg:server.http_addr=.*/cfg:server.http_addr=0.0.0.0/g" /etc/conf.d/grafana
       service grafana restart
+      msg_ok "Allowed listening on all interfaces!"
       exit
       ;;
     3)
       sed -i -e "s/cfg:server.http_addr=.*/cfg:server.http_addr=$LXCIP/g" /etc/conf.d/grafana
       service grafana restart
+      msg_ok "Allowed listening only on ${LXCIP}!"
       exit
       ;;
     esac
   done
+  exit 0
 }
 
 start
 build_container
 description
 
-msg_ok "Completed Successfully!\n"
+msg_ok "Completed successfully!\n"
 echo -e "${APP} should be reachable by going to the following URL.
          ${BL}http://${IP}:3000${CL} \n"

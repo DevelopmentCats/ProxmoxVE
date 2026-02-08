@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-source <(curl -s https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
-# Copyright (c) 2021-2025 tteck
+source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
+# Copyright (c) 2021-2026 tteck
 # Author: tteck (tteckster)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://www.home-assistant.io/
 
 APP="Home Assistant"
-var_tags="automation;smarthome"
-var_cpu="2"
-var_ram="2048"
-var_disk="16"
-var_os="debian"
-var_version="12"
-var_unprivileged="1"
+var_tags="${var_tags:-automation;smarthome}"
+var_cpu="${var_cpu:-2}"
+var_ram="${var_ram:-2048}"
+var_disk="${var_disk:-16}"
+var_os="${var_os:-debian}"
+var_version="${var_version:-13}"
+var_unprivileged="${var_unprivileged:-1}"
 
 header_info "$APP"
 variables
@@ -38,7 +38,7 @@ function update_script() {
     msg_info "Updating All Containers"
     CONTAINER_LIST="${1:-$(docker ps -q)}"
     for container in ${CONTAINER_LIST}; do
-      CONTAINER_IMAGE="$(docker inspect --format "{{.Config.Image}}" --type container ${container})"
+      CONTAINER_IMAGE="$(docker inspect --format "{{.Config.Image}}" --type container "${container}")"
       RUNNING_IMAGE="$(docker inspect --format "{{.Image}}" --type container "${container}")"
       docker pull "${CONTAINER_IMAGE}"
       LATEST_IMAGE="$(docker inspect --format "{{.Id}}" --type image "${CONTAINER_IMAGE}")"
@@ -47,7 +47,7 @@ function update_script() {
         echo "Updating ${container} image ${CONTAINER_IMAGE}"
         DOCKER_COMMAND="$(runlike --use-volume-id "${container}")"
         docker rm --force "${container}"
-        eval ${DOCKER_COMMAND}
+        eval "${DOCKER_COMMAND}"
       fi
     done
     msg_ok "Updated All Containers"
@@ -62,7 +62,6 @@ function update_script() {
   if [ "$UPD" == "3" ]; then
     msg_info "Installing Home Assistant Community Store (HACS)"
     $STD apt update
-    $STD apt install unzip
     cd /var/lib/docker/volumes/hass_config/_data
     $STD bash <(curl -fsSL https://get.hacs.xyz)
     msg_ok "Installed Home Assistant Community Store (HACS)"
@@ -70,7 +69,6 @@ function update_script() {
     exit
   fi
   if [ "$UPD" == "4" ]; then
-    IP=$(hostname -I | awk '{print $1}')
     msg_info "Installing FileBrowser"
     RELEASE=$(curl -fsSL https://api.github.com/repos/filebrowser/filebrowser/releases/latest | grep -o '"tag_name": ".*"' | sed 's/"//g' | sed 's/tag_name: //g')
     $STD curl -fsSL https://github.com/filebrowser/filebrowser/releases/download/v2.23.0/linux-amd64-filebrowser.tar.gz | tar -xzv -C /usr/local/bin
@@ -91,12 +89,12 @@ ExecStart=/usr/local/bin/filebrowser -r /
 [Install]
 WantedBy=default.target" >$service_path
 
-    $STD systemctl enable --now filebrowser.service
+    $STD systemctl enable --now filebrowser
     msg_ok "Created Service"
 
-    msg_ok "Completed Successfully!\n"
+    msg_ok "Completed successfully!\n"
     echo -e "FileBrowser should be reachable by going to the following URL.
-         ${BL}http://$IP:8080${CL}   admin|helper-scripts.com\n"
+         ${BL}http://$LOCAL_IP:8080${CL}   admin|helper-scripts.com\n"
     exit
   fi
 }
@@ -105,8 +103,8 @@ start
 build_container
 description
 
-msg_ok "Completed Successfully!\n"
+msg_ok "Completed successfully!\n"
 echo -e "${CREATING}${GN}${APP} setup has been successfully initialized!${CL}"
 echo -e "${INFO}${YW} Access it using the following URL:${CL}"
 echo -e "${TAB}${GATEWAY}${BGN}HA: http://${IP}:8123${CL}"
-echo -e "${TAB}${GATEWAY}${BGN}Portainer: http://${IP}:9443${CL}"
+echo -e "${TAB}${GATEWAY}${BGN}Portainer: https://${IP}:9443${CL}"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 tteck
+# Copyright (c) 2021-2026 tteck
 # Author: tteck (tteckster)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://www.docker.com/
@@ -13,29 +13,18 @@ setting_up_container
 network_check
 update_os
 
-msg_info "Installing Dependencies"
-$STD apt-get install -y curl
-$STD apt-get install -y sudo
-$STD apt-get install -y mc
-msg_ok "Installed Dependencies"
+DOCKER_LATEST_VERSION=$(get_latest_github_release "moby/moby")
+PORTAINER_LATEST_VERSION=$(get_latest_github_release "portainer/portainer")
+PORTAINER_AGENT_LATEST_VERSION=$(get_latest_github_release "portainer/agent")
 
-get_latest_release() {
-  curl -sL https://api.github.com/repos/$1/releases/latest | grep '"tag_name":' | cut -d'"' -f4
-}
-
-DOCKER_LATEST_VERSION=$(get_latest_release "moby/moby")
-PORTAINER_LATEST_VERSION=$(get_latest_release "portainer/portainer")
-PORTAINER_AGENT_LATEST_VERSION=$(get_latest_release "portainer/agent")
-DOCKER_COMPOSE_LATEST_VERSION=$(get_latest_release "docker/compose")
-
-msg_info "Installing Docker $DOCKER_LATEST_VERSION"
+msg_info "Installing Docker $DOCKER_LATEST_VERSION (with Compose, Buildx)"
 DOCKER_CONFIG_PATH='/etc/docker/daemon.json'
 mkdir -p $(dirname $DOCKER_CONFIG_PATH)
 echo -e '{\n  "log-driver": "journald"\n}' >/etc/docker/daemon.json
-$STD sh <(curl -sSL https://get.docker.com)
+$STD sh <(curl -fsSL https://get.docker.com)
 msg_ok "Installed Docker $DOCKER_LATEST_VERSION"
 
-read -r -p "Would you like to add Portainer? <y/N> " prompt
+read -r -p "${TAB3}Would you like to add Portainer (UI)? <y/N> " prompt
 if [[ ${prompt,,} =~ ^(y|yes)$ ]]; then
   msg_info "Installing Portainer $PORTAINER_LATEST_VERSION"
   docker volume create portainer_data >/dev/null
@@ -49,9 +38,9 @@ if [[ ${prompt,,} =~ ^(y|yes)$ ]]; then
     portainer/portainer-ce:latest
   msg_ok "Installed Portainer $PORTAINER_LATEST_VERSION"
 else
-  read -r -p "Would you like to add the Portainer Agent? <y/N> " prompt
-  if [[ ${prompt,,} =~ ^(y|yes)$ ]]; then
-    msg_info "Installing Portainer agent $PORTAINER_AGENT_LATEST_VERSION"
+  read -r -p "${TAB3}Would you like to install the Portainer Agent (for remote management)? <y/N> " prompt_agent
+  if [[ ${prompt_agent,,} =~ ^(y|yes)$ ]]; then
+    msg_info "Installing Portainer Agent $PORTAINER_AGENT_LATEST_VERSION"
     $STD docker run -d \
       -p 9001:9001 \
       --name portainer_agent \
@@ -63,10 +52,44 @@ else
   fi
 fi
 
+read -r -p "${TAB3}Expose Docker TCP socket (insecure) ? [n = No, l = Local only (127.0.0.1), a = All interfaces (0.0.0.0)] <n/l/a>: " socket_choice
+case "${socket_choice,,}" in
+l)
+  socket="tcp://127.0.0.1:2375"
+  ;;
+a)
+  socket="tcp://0.0.0.0:2375"
+  ;;
+*)
+  socket=""
+  ;;
+esac
+
+if [[ -n "$socket" ]]; then
+  msg_info "Enabling Docker TCP socket on $socket"
+  $STD apt-get install -y jq
+
+  tmpfile=$(mktemp)
+  jq --arg sock "$socket" '. + { "hosts": ["unix:///var/run/docker.sock", $sock] }' /etc/docker/daemon.json >"$tmpfile" && mv "$tmpfile" /etc/docker/daemon.json
+
+  mkdir -p /etc/systemd/system/docker.service.d
+  cat <<EOF >/etc/systemd/system/docker.service.d/override.conf
+[Service]
+ExecStart=
+ExecStart=/usr/bin/dockerd
+EOF
+
+  $STD systemctl daemon-reexec
+  $STD systemctl daemon-reload
+
+  if systemctl restart docker; then
+    msg_ok "Docker TCP socket available on $socket"
+  else
+    msg_error "Docker failed to restart. Check journalctl -xeu docker.service"
+    exit 1
+  fi
+fi
+
 motd_ssh
 customize
-
-msg_info "Cleaning up"
-$STD apt-get -y autoremove
-$STD apt-get -y autoclean
-msg_ok "Cleaned"
+cleanup_lxc

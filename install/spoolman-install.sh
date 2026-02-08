@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 tteck
+# Copyright (c) 2021-2026 tteck
 # Author: tteck
 # Co-Author: MickLesk (Canbiz)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
@@ -15,59 +15,42 @@ network_check
 update_os
 
 msg_info "Installing Dependencies"
-$STD apt-get install -y \
+$STD apt install -y \
   build-essential \
-  curl \
-  sudo \
-  make \
   libpq-dev \
-  gpg \
-  ca-certificates \
-  mc
+  libffi-dev
 msg_ok "Installed Dependencies"
 
-msg_info "Setup Python3"
-$STD apt-get install -y \
-  python3-dev \
-  python3-setuptools \
-  python3-wheel \
-  python3-pip
-msg_ok "Setup Python3"
+fetch_and_deploy_gh_release "spoolman" "Donkie/Spoolman" "prebuild" "latest" "/opt/spoolman" "spoolman.zip"
+PYTHON_VERSION="3.14" setup_uv
 
-msg_info "Installing Spoolman"
-RELEASE=$(wget -q https://github.com/Donkie/Spoolman/releases/latest -O - | grep "title>Release" | cut -d " " -f 4)
-cd /opt
-wget -q https://github.com/Donkie/Spoolman/releases/download/$RELEASE/spoolman.zip
-unzip -q spoolman.zip -d spoolman
-rm -rf spoolman.zip
-cd spoolman
-$STD pip3 install -r requirements.txt
-wget -q https://raw.githubusercontent.com/Donkie/Spoolman/master/.env.example -O .env
-echo "${RELEASE}" >/opt/${APPLICATION}_version.txt
-msg_ok "Installed Spoolman"
+msg_info "Setting up Spoolman"
+cd /opt/spoolman
+$STD uv sync --locked --no-install-project
+$STD uv sync --locked
+cp .env.example .env
+msg_ok "Setup Spoolman"
 
 msg_info "Creating Service"
 cat <<EOF >/etc/systemd/system/spoolman.service
 [Unit]
 Description=Spoolman
 After=network.target
+
 [Service]
 Type=simple
 WorkingDirectory=/opt/spoolman
 EnvironmentFile=/opt/spoolman/.env
-ExecStart=uvicorn spoolman.main:app --host 0.0.0.0 --port 7912
+ExecStart=/usr/bin/bash /opt/spoolman/scripts/start.sh
 Restart=always
 User=root
+
 [Install]
 WantedBy=multi-user.target
 EOF
-systemctl enable -q --now spoolman.service
+systemctl enable -q --now spoolman
 msg_ok "Created Service"
 
 motd_ssh
 customize
-
-msg_info "Cleaning up"
-$STD apt-get -y autoremove
-$STD apt-get -y autoclean
-msg_ok "Cleaned"
+cleanup_lxc

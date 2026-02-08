@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 community-scripts ORG
+# Copyright (c) 2021-2026 community-scripts ORG
 # Author: Nícolas Pastorello (opastorello)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://www.glpi-project.org/
@@ -14,47 +14,44 @@ network_check
 update_os
 
 msg_info "Installing Dependencies"
-$STD apt-get install -y \
-  curl \
+$STD apt install -y \
   git \
-  sudo \
-  mc \
   apache2 \
-  php8.2-{apcu,cli,common,curl,gd,imap,ldap,mysql,xmlrpc,xml,mbstring,bcmath,intl,zip,redis,bz2,soap} \
+  php8.4-{apcu,cli,common,curl,gd,ldap,mysql,xmlrpc,xml,mbstring,bcmath,intl,zip,redis,bz2,soap} \
   php-cas \
-  libapache2-mod-php \
-  mariadb-server
+  libapache2-mod-php
 msg_ok "Installed Dependencies"
+
+setup_mariadb
 
 msg_info "Setting up database"
 DB_NAME=glpi_db
 DB_USER=glpi
 DB_PASS=$(openssl rand -base64 18 | tr -dc 'a-zA-Z0-9' | head -c13)
-mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql mysql
-mysql -u root -e "CREATE DATABASE $DB_NAME;"
-mysql -u root -e "CREATE USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';"
-mysql -u root -e "GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';"
-mysql -u root -e "GRANT SELECT ON \`mysql\`.\`time_zone_name\` TO '$DB_USER'@'localhost'; FLUSH PRIVILEGES;"
+mariadb-tzinfo-to-sql /usr/share/zoneinfo | mariadb mysql
+$STD mariadb -u root -e "CREATE DATABASE $DB_NAME;"
+$STD mariadb -u root -e "CREATE USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';"
+$STD mariadb -u root -e "GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';"
+$STD mariadb -u root -e "GRANT SELECT ON \`mysql\`.\`time_zone_name\` TO '$DB_USER'@'localhost'; FLUSH PRIVILEGES;"
 {
-    echo "GLPI Database Credentials"
-    echo "Database: $DB_NAME"
-    echo "Username: $DB_USER"
-    echo "Password: $DB_PASS"
-} >> ~/glpi_db.creds
+  echo "GLPI Database Credentials"
+  echo "Database: $DB_NAME"
+  echo "Username: $DB_USER"
+  echo "Password: $DB_PASS"
+} >>~/glpi_db.creds
 msg_ok "Set up database"
 
 msg_info "Installing GLPi"
 cd /opt
-RELEASE=$(curl -s https://api.github.com/repos/glpi-project/glpi/releases/latest | grep '"tag_name"' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/')
-wget -q "https://github.com/glpi-project/glpi/releases/download/${RELEASE}/glpi-${RELEASE}.tgz"
+RELEASE=$(curl -fsSL https://api.github.com/repos/glpi-project/glpi/releases/latest | grep '"tag_name"' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/')
+curl -fsSL "https://github.com/glpi-project/glpi/releases/download/${RELEASE}/glpi-${RELEASE}.tgz" -o $(basename "https://github.com/glpi-project/glpi/releases/download/${RELEASE}/glpi-${RELEASE}.tgz")
 $STD tar -xzvf glpi-${RELEASE}.tgz
 cd /opt/glpi
-$STD php bin/console db:install --db-name=$DB_NAME --db-user=$DB_USER --db-password=$DB_PASS --no-interaction
 echo "${RELEASE}" >/opt/${APPLICATION}_version.txt
 msg_ok "Installed GLPi"
 
 msg_info "Setting Downstream file"
-cat <<EOF > /opt/glpi/inc/downstream.php
+cat <<EOF >/opt/glpi/inc/downstream.php
 <?php
 define('GLPI_CONFIG_DIR', '/etc/glpi/');
 if (file_exists(GLPI_CONFIG_DIR . '/local_define.php')) {
@@ -66,7 +63,7 @@ mv /opt/glpi/config /etc/glpi
 mv /opt/glpi/files /var/lib/glpi
 mv /var/lib/glpi/_log /var/log/glpi
 
-cat <<EOF > /etc/glpi/local_define.php
+cat <<EOF >/etc/glpi/local_define.php
 <?php
 define('GLPI_VAR_DIR', '/var/lib/glpi');
 define('GLPI_DOC_DIR', GLPI_VAR_DIR);
@@ -84,6 +81,18 @@ define('GLPI_CACHE_DIR', GLPI_VAR_DIR . '/_cache');
 define('GLPI_LOG_DIR', '/var/log/glpi');
 EOF
 msg_ok "Configured Downstream file"
+
+msg_info "Configuring GLPI Database"
+$STD /usr/bin/php /opt/glpi/bin/console db:install \
+  --db-host=localhost \
+  --db-name=$DB_NAME \
+  --db-user=$DB_USER \
+  --db-password=$DB_PASS \
+  --default-language=en_US \
+  --no-interaction \
+  --allow-superuser \
+  --force
+msg_ok "Configured GLPI Database"
 
 msg_info "Setting Folder and File Permissions"
 chown root:root /opt/glpi/ -R
@@ -123,6 +132,8 @@ EOF
 $STD a2dissite 000-default.conf
 $STD a2enmod rewrite
 $STD a2ensite glpi.conf
+rm -rf /opt/glpi/install/install.php
+rm -rf /opt/glpi-${RELEASE}.tgz
 msg_ok "Setup Service"
 
 msg_info "Setup Cronjob"
@@ -143,10 +154,4 @@ msg_ok "Update PHP Params"
 
 motd_ssh
 customize
-
-msg_info "Cleaning up"
-rm -rf /opt/glpi/install
-rm -rf /opt/glpi-${RELEASE}.tgz
-$STD apt-get -y autoremove
-$STD apt-get -y autoclean
-msg_ok "Cleaned"
+cleanup_lxc

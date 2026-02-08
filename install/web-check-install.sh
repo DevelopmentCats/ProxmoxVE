@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 community-scripts ORG
+# Copyright (c) 2021-2026 community-scripts ORG
 # Author: CrazyWolf13
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://github.com/lissy93/web-check
 
-source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
+source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
 color
 verb_ip6
 catch_errors
@@ -15,12 +15,8 @@ update_os
 
 msg_info "Installing Dependencies"
 export DEBIAN_FRONTEND=noninteractive
-$STD apt-get -y install --no-install-recommends \
-  curl \
-  sudo \
-  mc \
+$STD apt -y install --no-install-recommends \
   git \
-  gnupg \
   traceroute \
   make \
   g++ \
@@ -39,46 +35,40 @@ $STD apt-get -y install --no-install-recommends \
   x11-apps
 msg_ok "Installed Dependencies"
 
-msg_info "Setting up Node.js Repository"
-mkdir -p /etc/apt/keyrings
-curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
-echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" >/etc/apt/sources.list.d/nodesource.list
-msg_ok "Set up Node.js Repository"
+NODE_VERSION="22" NODE_MODULE="yarn" setup_nodejs
 
 msg_info "Setup Python3"
-$STD apt-get install -y python3
+$STD apt install -y python3
 rm -rf /usr/lib/python3.*/EXTERNALLY-MANAGED
 msg_ok "Setup Python3"
 
 msg_info "Installing Chromium"
-curl -fsSL https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/trusted.gpg.d/google-archive.gpg
-echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >/etc/apt/sources.list.d/google.list
-$STD apt-get update
-$STD apt-get -y install \
+curl -fsSL https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg
+cat <<EOF | sudo tee /etc/apt/sources.list.d/google-chrome.sources >/dev/null
+Types: deb
+URIs: http://dl.google.com/linux/chrome/deb/
+Suites: stable
+Components: main
+Architectures: amd64
+Signed-By: /usr/share/keyrings/google-chrome-keyring.gpg
+EOF
+$STD apt update
+$STD apt -y install \
   chromium \
   libxss1 \
   lsb-release
 msg_ok "Installed Chromium"
 
-msg_info "Installing Node.js"
-$STD apt-get update
-$STD apt-get install -y nodejs
-$STD npm install -g yarn
-msg_ok "Installed Node.js"
-
 msg_info "Setting up Chromium"
-/usr/bin/chromium --no-sandbox --version > /etc/chromium-version
+/usr/bin/chromium --no-sandbox --version >/etc/chromium-version
 chmod 755 /usr/bin/chromium
 msg_ok "Setup Chromium"
 
+fetch_and_deploy_gh_release "web-check" "CrazyWolf13/web-check" "tarball"
+
 msg_info "Installing Web-Check (Patience)"
-temp_file=$(mktemp)
-RELEASE="patch-1"
-wget -q "https://github.com/CrazyWolf13/web-check/archive/refs/heads/${RELEASE}.tar.gz" -O $temp_file
-tar xzf $temp_file
-mv web-check-${RELEASE} /opt/web-check
 cd /opt/web-check
-cat <<'EOF' > /opt/web-check/.env
+cat <<'EOF' >/opt/web-check/.env
 CHROME_PATH=/usr/bin/chromium
 PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 HEADLESS=true
@@ -101,7 +91,6 @@ REACT_APP_API_ENDPOINT='/api'
 ENABLE_ANALYTICS='false'
 EOF
 $STD yarn install --frozen-lockfile --network-timeout 100000
-echo "${RELEASE}" >/opt/${APPLICATION}_version.txt
 msg_ok "Installed Web-Check"
 
 msg_info "Building Web-Check"
@@ -109,7 +98,7 @@ $STD yarn build --production
 msg_ok "Built Web-Check"
 
 msg_info "Creating Service"
-cat <<'EOF' > /opt/run_web-check.sh
+cat <<'EOF' >/opt/run_web-check.sh
 #!/bin/bash
 SCREEN_RESOLUTION="1280x1024x24"
 if ! systemctl is-active --quiet dbus; then
@@ -123,7 +112,7 @@ cd /opt/web-check
 exec yarn start
 EOF
 chmod +x /opt/run_web-check.sh
-cat <<'EOF' > /etc/systemd/system/web-check.service
+cat <<'EOF' >/etc/systemd/system/web-check.service
 [Unit]
 Description=Web Check Service
 After=network.target
@@ -148,13 +137,4 @@ msg_ok "Created Service"
 
 motd_ssh
 customize
-
-msg_info "Cleaning up"
-rm -rf $temp_file
-rm -rf /var/lib/apt/lists/* /app/node_modules/.cache
-$STD apt-get -y autoremove
-$STD apt-get -y autoclean
-msg_ok "Cleaned"
-
-motd_ssh
-customize
+cleanup_lxc

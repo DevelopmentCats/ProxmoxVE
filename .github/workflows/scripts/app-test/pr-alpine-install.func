@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright (c) 2021-2025 community-scripts ORG
+# Copyright (c) 2021-2026 community-scripts ORG
 # Author: Michel Roegl-Brunner (michelroegl-brunner)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 
@@ -72,8 +72,7 @@ network_check() {
 
 update_os() {
   msg_info "Updating Container OS"
-  apk update
-  apk upgrade
+  $STD apk -U upgrade
   msg_ok "Updated Container OS"
 }
 

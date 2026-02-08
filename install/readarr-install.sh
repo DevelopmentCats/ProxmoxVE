@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 tteck
+# Copyright (c) 2021-2026 tteck
 # Author: tteck (tteckster)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://readarr.com/
 
-source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
+source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
 color
 verb_ip6
 catch_errors
@@ -14,19 +14,18 @@ network_check
 update_os
 
 msg_info "Installing Dependencies"
-$STD apt-get install -y curl
-$STD apt-get install -y sudo
-$STD apt-get install -y mc
-$STD apt-get install -y sqlite3
+$STD apt install -y sqlite3
 msg_ok "Installed Dependencies"
 
 msg_info "Installing Readarr"
 mkdir -p /var/lib/readarr/
 chmod 775 /var/lib/readarr/
-$STD wget --content-disposition 'https://readarr.servarr.com/v1/update/develop/updatefile?os=linux&runtime=netcore&arch=x64'
-$STD tar -xvzf Readarr.develop.*.tar.gz
+cd /var/lib/readarr/
+$STD curl -fsSL 'https://readarr.servarr.com/v1/update/develop/updatefile?os=linux&runtime=netcore&arch=x64' -o readarr.tar.gz
+$STD tar -xvzf readarr.tar.gz
 mv Readarr /opt
 chmod 775 /opt/Readarr
+rm -rf Readarr.develop.*.tar.gz
 msg_ok "Installed Readarr"
 
 msg_info "Creating Service"
@@ -50,9 +49,4 @@ msg_ok "Created Service"
 
 motd_ssh
 customize
-
-msg_info "Cleaning up"
-rm -rf Readarr.develop.*.tar.gz
-$STD apt-get -y autoremove
-$STD apt-get -y autoclean
-msg_ok "Cleaned"
+cleanup_lxc

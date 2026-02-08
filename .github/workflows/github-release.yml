@@ -7,7 +7,8 @@ on:
   
 jobs:
   create-daily-release:
-    runs-on: runner-cluster-htl-set
+    if: github.repository == 'community-scripts/ProxmoxVE'
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:

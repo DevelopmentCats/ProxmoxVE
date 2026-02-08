@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 community-scripts ORG
+# Copyright (c) 2021-2026 community-scripts ORG
 # Author: Slaviša Arežina (tremor021)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://radicale.org/
@@ -14,13 +14,10 @@ network_check
 update_os
 
 msg_info "Installing Dependencies"
-$STD apt-get install -y \
-  curl \
-  sudo \
-  mc \
+$STD apt install -y \
   apache2-utils \
   python3-pip \
-  python3.11-venv
+  python3-venv
 msg_ok "Installed Dependencies"
 
 msg_info "Setting up Radicale"
@@ -30,10 +27,10 @@ $STD python3 -m pip install --upgrade https://github.com/Kozea/Radicale/archive/
 RNDPASS=$(openssl rand -base64 18 | tr -dc 'a-zA-Z0-9' | head -c13)
 $STD htpasswd -c -b -5 /opt/radicale/users admin $RNDPASS
 {
-echo "Radicale Credentials"
-echo "Admin User: admin"
-echo "Admin Password: $RNDPASS"
-} >> ~/radicale.creds
+  echo "Radicale Credentials"
+  echo "Admin User: admin"
+  echo "Admin Password: $RNDPASS"
+} >>~/radicale.creds
 msg_ok "Done setting up Radicale"
 
 msg_info "Setup Service"
@@ -66,8 +63,4 @@ msg_ok "Created Service"
 
 motd_ssh
 customize
-
-msg_info "Cleaning up"
-$STD apt-get -y autoremove
-$STD apt-get -y autoclean
-msg_ok "Cleaned"
+cleanup_lxc

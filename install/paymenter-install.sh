@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 community-scripts ORG
+# Copyright (c) 2021-2026 community-scripts ORG
 # Author: Nícolas Pastorello (opastorello)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://www.paymenter.org
@@ -14,47 +14,33 @@ network_check
 update_os
 
 msg_info "Installing Dependencies"
-$STD apt-get install -y \
-    curl \
-    sudo \
-    mc \
-    git \
-    software-properties-common \
-    apt-transport-https \
-    ca-certificates \
-    gnupg \
-    php8.2 \
-    php8.2-{common,cli,gd,mysql,mbstring,bcmath,xml,fpm,curl,zip} \
-    mariadb-server \
-    nginx \
-    redis-server
-$STD curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+$STD apt install -y \
+  git \
+  nginx \
+  redis-server
 msg_ok "Installed Dependencies"
 
-msg_info "Installing Paymenter"
-RELEASE=$(curl -s https://api.github.com/repos/paymenter/paymenter/releases/latest | grep '"tag_name"' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/')
-echo "${RELEASE}" >/opt/${APPLICATION}_version.txt
-mkdir -p /opt/paymenter
-cd /opt/paymenter
-wget -q "https://github.com/paymenter/paymenter/releases/download/${RELEASE}/paymenter.tar.gz"
-$STD tar -xzvf paymenter.tar.gz
-chmod -R 755 storage/* bootstrap/cache/
-msg_ok "Installed Paymenter"
+setup_mariadb
+PHP_VERSION="8.3" PHP_FPM="YES" setup_php
+setup_composer
+fetch_and_deploy_gh_release "paymenter" "paymenter/paymenter" "prebuild" "latest" "/opt/paymenter" "paymenter.tar.gz"
+chmod -R 755 /opt/paymenter/storage/* /opt/paymenter/bootstrap/cache/
 
 msg_info "Setting up database"
 DB_NAME=paymenter
 DB_USER=paymenter
 DB_PASS=$(openssl rand -base64 18 | tr -dc 'a-zA-Z0-9' | head -c13)
-mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql mysql
-mysql -u root -e "CREATE DATABASE $DB_NAME;"
-mysql -u root -e "CREATE USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';"
-mysql -u root -e "GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost' WITH GRANT OPTION;"
+mariadb-tzinfo-to-sql /usr/share/zoneinfo | mariadb mysql
+$STD mariadb -u root -e "CREATE DATABASE $DB_NAME;"
+$STD mariadb -u root -e "CREATE USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';"
+$STD mariadb -u root -e "GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost' WITH GRANT OPTION;"
 {
-    echo "Paymenter Database Credentials"
-    echo "Database: $DB_NAME"
-    echo "Username: $DB_USER"
-    echo "Password: $DB_PASS"
-} >> ~/paymenter_db.creds
+  echo "Paymenter Database Credentials"
+  echo "Database: $DB_NAME"
+  echo "Username: $DB_USER"
+  echo "Password: $DB_PASS"
+} >>~/paymenter_db.creds
+cd /opt/paymenter
 cp .env.example .env
 $STD composer install --no-dev --optimize-autoloader --no-interaction
 $STD php artisan key:generate --force
@@ -66,13 +52,7 @@ $STD php artisan migrate --force --seed
 msg_ok "Set up database"
 
 msg_info "Creating Admin User"
-$STD php artisan p:user:create <<EOF
-admin@paymenter.org
-paymenter
-admin
-paymenter
-0
-EOF
+$STD php artisan app:user:create paymenter admin admin@paymenter.org paymenter 1 -q
 msg_ok "Created Admin User"
 
 msg_info "Configuring Nginx"
@@ -91,7 +71,7 @@ server {
 
     location ~ \.php\$ {
         include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
+        fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
         fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
         include fastcgi_params;
     }
@@ -128,14 +108,10 @@ RestartSec=5s
 [Install]
 WantedBy=multi-user.target
 EOF
-$STD systemctl enable --now paymenter.service
+systemctl enable -q --now paymenter
+systemctl enable -q --now redis-server
 msg_ok "Setup Service"
-
-msg_info "Cleaning up"
-rm -rf /opt/paymenter/paymenter.tar.gz
-$STD apt-get -y autoremove
-$STD apt-get -y autoclean
-msg_ok "Cleaned"
 
 motd_ssh
 customize
+cleanup_lxc

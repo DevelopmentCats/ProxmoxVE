@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 community-scripts ORG
+# Copyright (c) 2021-2026 community-scripts ORG
 # Author: Andy Grunwald (andygrunwald)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://github.com/prometheus-pve/prometheus-pve-exporter
 
-source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
+source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
 color
 verb_ip6
 catch_errors
@@ -13,24 +13,17 @@ setting_up_container
 network_check
 update_os
 
-msg_info "Installing Dependencies"
-$STD apt-get install -y \
-  curl \
-  sudo \
-  mc
-msg_ok "Installed Dependencies"
-
-msg_info "Setup Python3"
-$STD apt-get install -y \
-  python3 \
-  python3-pip
-rm -rf /usr/lib/python3.*/EXTERNALLY-MANAGED
-msg_ok "Setup Python3"
+PYTHON_VERSION="3.12" setup_uv
 
 msg_info "Installing Prometheus Proxmox VE Exporter"
-python3 -m pip install --default-timeout=300 --quiet --root-user-action=ignore prometheus-pve-exporter
 mkdir -p /opt/prometheus-pve-exporter
-cat <<EOF > /opt/prometheus-pve-exporter/pve.yml
+cd /opt/prometheus-pve-exporter
+
+$STD uv venv /opt/prometheus-pve-exporter/.venv
+$STD /opt/prometheus-pve-exporter/.venv/bin/python -m ensurepip --upgrade
+$STD /opt/prometheus-pve-exporter/.venv/bin/python -m pip install --upgrade pip
+$STD /opt/prometheus-pve-exporter/.venv/bin/python -m pip install prometheus-pve-exporter
+cat <<EOF >/opt/prometheus-pve-exporter/pve.yml
 default:
     user: prometheus@pve
     password: sEcr3T!
@@ -49,7 +42,7 @@ After=syslog.target network.target
 User=root
 Restart=always
 Type=simple
-ExecStart=pve_exporter \
+ExecStart=/opt/prometheus-pve-exporter/.venv/bin/pve_exporter \
     --config.file=/opt/prometheus-pve-exporter/pve.yml \
     --web.listen-address=0.0.0.0:9221
 ExecReload=/bin/kill -HUP \$MAINPID
@@ -63,8 +56,4 @@ msg_ok "Created Service"
 
 motd_ssh
 customize
-
-msg_info "Cleaning up"
-$STD apt-get -y autoremove
-$STD apt-get -y autoclean
-msg_ok "Cleaned"
+cleanup_lxc

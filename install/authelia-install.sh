@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 community-scripts ORG
+# Copyright (c) 2021-2026 community-scripts ORG
 # Author: thost96 (thost96)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://www.authelia.com/
 
-source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
+source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
 color
 verb_ip6
 catch_errors
@@ -13,26 +13,53 @@ setting_up_container
 network_check
 update_os
 
-msg_info "Installing Dependencies"
-$STD apt-get install -y \
-  curl \
-  sudo \
-  mc 
-msg_ok "Installed Dependencies"
+fetch_and_deploy_gh_release "authelia" "authelia/authelia" "binary"
 
-msg_info "Installing Authelia"
-RELEASE=$(curl -s https://api.github.com/repos/authelia/authelia/releases/latest | grep "tag_name" | awk '{print substr($2, 2, length($2)-3) }')
-wget -q "https://github.com/authelia/authelia/releases/download/${RELEASE}/authelia_${RELEASE}_amd64.deb"
-$STD dpkg -i "authelia_${RELEASE}_amd64.deb"
-msg_ok "Install Authelia completed"
-
-read -p "Enter your domain (ex. example.com): " DOMAIN
-
+MAX_ATTEMPTS=3
+attempt=0
+while true; do
+  attempt=$((attempt + 1))
+  read -rp "${TAB3}Enter your domain or IP (ex. example.com or 192.168.1.100): " DOMAIN
+  if [[ -z "$DOMAIN" ]]; then
+    if ((attempt >= MAX_ATTEMPTS)); then
+      DOMAIN="${LOCAL_IP:-localhost}"
+      msg_warn "Using fallback: $DOMAIN"
+      break
+    fi
+    msg_warn "Domain cannot be empty! (Attempt $attempt/$MAX_ATTEMPTS)"
+  elif [[ "$DOMAIN" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    valid_ip=true
+    IFS='.' read -ra octets <<< "$DOMAIN"
+    for octet in "${octets[@]}"; do
+      if ((octet > 255)); then
+        valid_ip=false
+        break
+      fi
+    done
+    if $valid_ip; then
+      break
+    else
+      msg_warn "Invalid IP address!"
+    fi
+  elif [[ "$DOMAIN" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$ ]]; then
+    break
+  else
+    msg_warn "Invalid domain format!"
+  fi
+done
 msg_info "Setting Authelia up"
 touch /etc/authelia/emails.txt
-JWT_SECRET=$(openssl rand  -hex 64)
-SESSION_SECRET=$(openssl rand  -hex 64)
-STORAGE_KEY=$(openssl rand  -hex 64)
+JWT_SECRET=$(openssl rand -hex 64)
+SESSION_SECRET=$(openssl rand -hex 64)
+STORAGE_KEY=$(openssl rand -hex 64)
+
+if [[ "$DOMAIN" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+  AUTHELIA_URL="https://${DOMAIN}:9091"
+else
+  AUTHELIA_URL="https://auth.${DOMAIN}"
+fi
+echo "$AUTHELIA_URL" > /etc/authelia/.authelia_url
+
 cat <<EOF >/etc/authelia/users.yml
 users:
   authelia:
@@ -41,7 +68,6 @@ users:
     password: "\$argon2id\$v=19\$m=65536,t=3,p=4\$ZBopMzXrzhHXPEZxRDVT2w\$SxWm96DwhOsZyn34DLocwQEIb4kCDsk632PuiMdZnig"
     groups: []
 EOF
-
 cat <<EOF >/etc/authelia/configuration.yml
 authentication_backend:
   file:
@@ -57,7 +83,7 @@ session:
   remember_me: '1M'
   cookies:
     - domain: "${DOMAIN}"
-      authelia_url: "https://auth.${DOMAIN}"
+      authelia_url: "${AUTHELIA_URL}"
 storage:
   encryption_key: "${STORAGE_KEY}"
   local:
@@ -71,14 +97,11 @@ notifier:
   filesystem:
     filename: /etc/authelia/emails.txt
 EOF
+touch /etc/authelia/emails.txt
+chown -R authelia:authelia /etc/authelia
 systemctl enable -q --now authelia
 msg_ok "Authelia Setup completed"
 
 motd_ssh
 customize
-
-msg_info "Cleaning up"
-rm -f "authelia_${RELEASE}_amd64.deb"
-$STD apt-get -y autoremove
-$STD apt-get -y autoclean
-msg_ok "Cleaned"
+cleanup_lxc

@@ -1,8 +1,10 @@
 "use client";
-import { cn } from "@/lib/utils";
 import { CheckIcon, ClipboardIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+
+import { cn } from "@/lib/utils";
+
 import { Card } from "./card";
 
 export default function CodeCopyButton({
@@ -26,13 +28,13 @@ export default function CodeCopyButton({
 
     setHasCopied(true);
 
-    let warning = localStorage.getItem("warning");
+    const warning = localStorage.getItem("warning");
 
     if (warning === null) {
       localStorage.setItem("warning", "1");
       setTimeout(() => {
         toast.error(
-          "Be careful when copying scripts from the internet. Always remember check the source!",
+          "Be careful when copying scripts from the internet. Always remember to check the source!",
           { duration: 8000 },
         );
       }, 500);
@@ -41,8 +43,8 @@ export default function CodeCopyButton({
 
   return (
     <div className="mt-4 flex">
-      <Card className="flex items-center overflow-x-auto bg-primary-foreground pl-4">
-        <div className="overflow-x-auto whitespace-pre-wrap text-nowrap break-all pr-4 text-sm">
+      <Card className="flex items-center overflow-x-auto bg-primary-foreground pl-4 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20">
+        <div className="overflow-x-auto whitespace-pre-wrap text-nowrap break-all pr-4 text-sm [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20">
           {!isMobile && children ? children : "Copy install command"}
         </div>
         <button
@@ -50,11 +52,13 @@ export default function CodeCopyButton({
           className={cn("bg-muted px-3 py-4")}
           title="Copy"
         >
-          {hasCopied ? (
-            <CheckIcon className="h-4 w-4" />
-          ) : (
-            <ClipboardIcon className="h-4 w-4" />
-          )}
+          {hasCopied
+            ? (
+                <CheckIcon className="h-4 w-4" />
+              )
+            : (
+                <ClipboardIcon className="h-4 w-4" />
+              )}
         </button>
       </Card>
     </div>

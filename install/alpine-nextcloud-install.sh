@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 tteck
+# Copyright (c) 2021-2026 tteck
 # Author: tteck (tteckster)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://nextcloud.com/
 
-source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
+source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
 color
 verb_ip6
 catch_errors
@@ -14,12 +14,7 @@ network_check
 update_os
 
 msg_info "Installing Dependencies"
-$STD apk add newt
-$STD apk add curl
 $STD apk add openssl
-$STD apk add openssh
-$STD apk add nano
-$STD apk add mc
 $STD apk add nginx
 msg_ok "Installed Dependencies"
 
@@ -53,7 +48,7 @@ $STD apk add nextcloud-mysql mariadb mariadb-client
 $STD mariadb-install-db --user=mysql --datadir=/var/lib/mysql
 $STD service mariadb start
 $STD rc-update add mariadb
-mysql -uroot -p"$ADMIN_PASS" -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '$ADMIN_PASS' WITH GRANT OPTION; DELETE FROM mysql.user WHERE User=''; DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1'); DROP DATABASE test; DELETE FROM mysql.db WHERE Db='test' OR Db='test\_%'; CREATE DATABASE $DB_NAME; GRANT ALL ON $DB_NAME.* TO '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS'; GRANT ALL ON $DB_NAME.* TO '$DB_USER'@'localhost.localdomain' IDENTIFIED BY '$DB_PASS'; FLUSH PRIVILEGES;"
+$STD mariadb -uroot -p"$ADMIN_PASS" -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '$ADMIN_PASS' WITH GRANT OPTION; DELETE FROM mysql.user WHERE User=''; DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1'); DROP DATABASE test; DELETE FROM mysql.db WHERE Db='test' OR Db='test\_%'; CREATE DATABASE $DB_NAME; GRANT ALL ON $DB_NAME.* TO '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS'; GRANT ALL ON $DB_NAME.* TO '$DB_USER'@'localhost.localdomain' IDENTIFIED BY '$DB_PASS'; FLUSH PRIVILEGES;"
 $STD apk del mariadb-client
 msg_ok "Installed MySQL Database"
 
@@ -139,7 +134,7 @@ server {
 }
 EOF
 sed -i -e 's|memory_limit = 128M|memory_limit = 512M|; $aapc.enable_cli=1' /etc/php83/php.ini
-sed -i -e 's|upload_max_file_size = 2M|upload_max_file_size = 16G|' /etc/php83/php.ini 
+sed -i -e 's|upload_max_file_size = 2M|upload_max_file_size = 16G|' /etc/php83/php.ini
 sed -i -E '/^php_admin_(flag|value)\[opcache/s/^/;/' /etc/php83/php-fpm.d/nextcloud.conf
 msg_ok "Installed Nextcloud"
 

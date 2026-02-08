@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 tteck
+# Copyright (c) 2021-2026 tteck
 # Author: tteck (tteckster)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://www.phoscon.de/en/conbee2/software#deconz
 
-source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
+source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
 color
 verb_ip6
 catch_errors
@@ -13,24 +13,20 @@ setting_up_container
 network_check
 update_os
 
-msg_info "Installing Dependencies"
-$STD apt-get install -y curl
-$STD apt-get install -y sudo
-$STD apt-get install -y mc
-msg_ok "Installed Dependencies"
-
 msg_info "Setting Phoscon Repository"
-VERSION="$(awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release)"
-curl -fsSL http://phoscon.de/apt/deconz.pub.key >/etc/apt/trusted.gpg.d/deconz.pub.asc
-echo "deb [arch=amd64] http://phoscon.de/apt/deconz $VERSION main" >/etc/apt/sources.list.d/deconz.list
+setup_deb822_repo \
+  "deconz" \
+  "http://phoscon.de/apt/deconz.pub.key" \
+  "http://phoscon.de/apt/deconz" \
+  "generic"
 msg_ok "Setup Phoscon Repository"
 
 msg_info "Installing deConz"
 libssl=$(curl -fsSL "http://security.ubuntu.com/ubuntu/pool/main/o/openssl/" | grep -o 'libssl1\.1_1\.1\.1f-1ubuntu2\.2[^"]*amd64\.deb' | head -n1)
-wget -qL http://security.ubuntu.com/ubuntu/pool/main/o/openssl/$libssl
-$STD dpkg -i $libssl
-$STD apt-get update
-$STD apt-get install -y deconz
+curl -fsSL "http://security.ubuntu.com/ubuntu/pool/main/o/openssl/$libssl" -o "$libssl"
+$STD dpkg -i "$libssl"
+$STD apt install -y deconz
+rm -rf "$libssl"
 msg_ok "Installed deConz"
 
 msg_info "Creating Service"
@@ -55,9 +51,4 @@ msg_ok "Created Service"
 
 motd_ssh
 customize
-
-msg_info "Cleaning up"
-rm -rf $libssl
-$STD apt-get -y autoremove
-$STD apt-get -y autoclean
-msg_ok "Cleaned"
+cleanup_lxc
