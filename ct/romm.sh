@@ -31,19 +31,61 @@ function update_script() {
     exit
   fi
 
-  msg_info "Stopping ${APP} containers"
-  cd /opt/romm && docker compose down
-  msg_ok "Stopped ${APP} containers"
+  ROMM_VERSION_FILE="/opt/romm/.version"
+  CURRENT_VERSION=$(cat "$ROMM_VERSION_FILE" 2>/dev/null || echo "unknown")
   
-  msg_info "Updating ${APP} containers"
-  cd /opt/romm && docker compose pull
-  msg_ok "Updated ${APP} containers"
+  ROMM_RELEASE_JSON=$(curl -fsSL https://api.github.com/repos/rommapp/romm/releases/latest)
+  ROMM_TAG=$(echo "$ROMM_RELEASE_JSON" | jq -r '.tag_name')
+  LATEST_VERSION="${ROMM_TAG#v}"
   
-  msg_info "Starting ${APP} containers"
-  cd /opt/romm && docker compose up -d
-  msg_ok "Started ${APP} containers"
+  if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
+    msg_ok "No update required. ${APP} is already at v${LATEST_VERSION}"
+    exit
+  fi
+
+  msg_info "Updating ${APP} from v${CURRENT_VERSION} to v${LATEST_VERSION}"
   
-  msg_ok "Updated Successfully"
+  msg_info "Stopping ${APP} service"
+  systemctl stop romm
+  msg_ok "Stopped ${APP} service"
+  
+  msg_info "Downloading RomM v${LATEST_VERSION}"
+  ROMM_TARBALL=$(echo "$ROMM_RELEASE_JSON" | jq -r '.tarball_url')
+  curl -fsSL "$ROMM_TARBALL" | tar -xz -C /opt/romm --strip-components=1 --overwrite
+  echo "$LATEST_VERSION" > "$ROMM_VERSION_FILE"
+  msg_ok "Downloaded RomM v${LATEST_VERSION}"
+  
+  msg_info "Updating backend dependencies"
+  cd /opt/romm
+  /usr/local/bin/uv sync --locked --no-cache
+  msg_ok "Updated backend dependencies"
+  
+  msg_info "Rebuilding frontend"
+  cd /opt/romm/frontend
+  npm ci --ignore-scripts --no-audit --no-fund
+  npm run build
+  msg_ok "Rebuilt frontend"
+  
+  msg_info "Updating frontend assets"
+  rm -rf /var/www/html/*
+  cp -a /opt/romm/frontend/dist/. /var/www/html/
+  mkdir -p /var/www/html/assets
+  cp -a /opt/romm/frontend/assets/. /var/www/html/assets/
+  ln -sfn /romm/resources /var/www/html/assets/romm/resources
+  ln -sfn /romm/assets /var/www/html/assets/romm/assets
+  msg_ok "Updated frontend assets"
+  
+  msg_info "Running database migrations"
+  cd /opt/romm/backend
+  source /opt/romm/.venv/bin/activate
+  alembic upgrade head
+  msg_ok "Ran database migrations"
+  
+  msg_info "Starting ${APP} service"
+  systemctl start romm
+  msg_ok "Started ${APP} service"
+  
+  msg_ok "Updated ${APP} to v${LATEST_VERSION}"
   exit
 }
 
