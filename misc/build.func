@@ -80,11 +80,11 @@ variables() {
   fi
 }
 
-source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/api.func)
+source <(curl -fsSL https://raw.githubusercontent.com/DevelopmentCats/ProxmoxVE/main/misc/api.func)
 
 if command -v curl >/dev/null 2>&1; then
-  source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/core.func)
-  source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/error_handler.func)
+  source <(curl -fsSL https://raw.githubusercontent.com/DevelopmentCats/ProxmoxVE/main/misc/core.func)
+  source <(curl -fsSL https://raw.githubusercontent.com/DevelopmentCats/ProxmoxVE/main/misc/error_handler.func)
   load_functions
   catch_errors
 elif command -v wget >/dev/null 2>&1; then
@@ -3327,7 +3327,7 @@ configure_ssh_settings() {
 # - Otherwise: shows update/setting menu and runs update_script with cleanup
 # ------------------------------------------------------------------------------
 start() {
-  source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/tools.func)
+  source <(curl -fsSL https://raw.githubusercontent.com/DevelopmentCats/ProxmoxVE/main/misc/tools.func)
   if command -v pveversion >/dev/null 2>&1; then
     install_script || return 0
     return 0
@@ -3459,9 +3459,9 @@ build_container() {
   TEMP_DIR=$(mktemp -d)
   pushd "$TEMP_DIR" >/dev/null
   if [ "$var_os" == "alpine" ]; then
-    export FUNCTIONS_FILE_PATH="$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/alpine-install.func)"
+    export FUNCTIONS_FILE_PATH="$(curl -fsSL https://raw.githubusercontent.com/DevelopmentCats/ProxmoxVE/main/misc/alpine-install.func)"
   else
-    export FUNCTIONS_FILE_PATH="$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/install.func)"
+    export FUNCTIONS_FILE_PATH="$(curl -fsSL https://raw.githubusercontent.com/DevelopmentCats/ProxmoxVE/main/misc/install.func)"
   fi
 
   # Core exports for install.func
