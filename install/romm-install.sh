@@ -2,6 +2,7 @@
 
 # Copyright (c) 2021-2026 community-scripts ORG
 # Author: DevelopmentCats (adapted from brandong84's Alpine script)
+# Sponsor: https://ko-fi.com/developmentcats
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/branch/main/LICENSE
 # Source: https://github.com/rommapp/romm
 
@@ -113,7 +114,8 @@ setup_mariadb
 MARIADB_DB_NAME="romm" MARIADB_DB_USER="romm" MARIADB_DB_CREDS_FILE="$ROMM_CRED_FILE" setup_mariadb_db
 DB_NAME="$MARIADB_DB_NAME"
 DB_USER="$MARIADB_DB_USER"
-DB_PASSWD="$MARIADB_DB_PASS"
+# Read password from credentials file since MARIADB_DB_PASS may not be exported
+DB_PASSWD=$(grep "^Password:" "$ROMM_CRED_FILE" | cut -d' ' -f2)
 
 msg_info "Building RAHasher"
 git clone --recursive --branch 1.8.1 --depth 1 https://github.com/RetroAchievements/RALibretro.git /tmp/RALibretro
@@ -270,7 +272,7 @@ function decodeBase64(r) {
 export default { decodeBase64 };
 EOF
 
-cat <<'EOF' >"$ROMM_NGINX_SITE"
+cat <<EOF >"$ROMM_NGINX_SITE"
 js_import /etc/nginx/js/decode.js;
 
 map $http_x_forwarded_proto $forwardscheme {

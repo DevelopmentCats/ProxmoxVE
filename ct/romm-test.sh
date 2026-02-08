@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-source <(curl -s https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
+# TEST VERSION - Sources from DevelopmentCats fork
+source <(curl -s https://raw.githubusercontent.com/DevelopmentCats/ProxmoxVE/main/misc/build.func)
 
 # Copyright (c) 2021-2026 community-scripts ORG
 # Author: DevelopmentCats
-# Sponsor: https://ko-fi.com/developmentcats
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/branch/main/LICENSE
 # Source: https://git.chesher.xyz/cat/romm-proxmox-ve-script
 
@@ -50,37 +50,25 @@ function update_script() {
   systemctl stop romm
   msg_ok "Stopped ${APP} service"
   
-  msg_info "Downloading RomM v${LATEST_VERSION}"
-  ROMM_TARBALL=$(echo "$ROMM_RELEASE_JSON" | jq -r '.tarball_url')
-  curl -fsSL "$ROMM_TARBALL" | tar -xz -C /opt/romm --strip-components=1 --overwrite
-  echo "$LATEST_VERSION" > "$ROMM_VERSION_FILE"
-  msg_ok "Downloaded RomM v${LATEST_VERSION}"
-  
-  msg_info "Updating backend dependencies"
+  msg_info "Pulling latest changes"
   cd /opt/romm
-  /usr/local/bin/uv sync --locked --no-cache
-  msg_ok "Updated backend dependencies"
+  git fetch --all --tags
+  git checkout "tags/${ROMM_TAG}" -b "release-${ROMM_TAG}"
+  msg_ok "Updated to ${ROMM_TAG}"
   
-  msg_info "Rebuilding frontend"
-  cd /opt/romm/frontend
-  npm ci --ignore-scripts --no-audit --no-fund
+  msg_info "Installing Python dependencies"
+  /opt/romm/.venv/bin/pip install -r requirements.txt --upgrade
+  msg_ok "Dependencies updated"
+  
+  msg_info "Updating frontend"
+  cd /opt/romm-frontend
+  git fetch --all --tags
+  git checkout "tags/${ROMM_TAG}" -b "release-${ROMM_TAG}"
+  npm install
   npm run build
-  msg_ok "Rebuilt frontend"
+  msg_ok "Frontend updated"
   
-  msg_info "Updating frontend assets"
-  rm -rf /var/www/html/*
-  cp -a /opt/romm/frontend/dist/. /var/www/html/
-  mkdir -p /var/www/html/assets
-  cp -a /opt/romm/frontend/assets/. /var/www/html/assets/
-  ln -sfn /romm/resources /var/www/html/assets/romm/resources
-  ln -sfn /romm/assets /var/www/html/assets/romm/assets
-  msg_ok "Updated frontend assets"
-  
-  msg_info "Running database migrations"
-  cd /opt/romm/backend
-  source /opt/romm/.venv/bin/activate
-  alembic upgrade head
-  msg_ok "Ran database migrations"
+  echo "$LATEST_VERSION" > "$ROMM_VERSION_FILE"
   
   msg_info "Starting ${APP} service"
   systemctl start romm
@@ -95,6 +83,6 @@ build_container
 description
 
 msg_ok "Completed Successfully!\n"
-echo -e "${CREATING}${GN}${APP} setup has been successfully initialized!${CL}"
-echo -e "${INFO}${YW} Access it using the following URL:${CL}"
-echo -e "${TAB}${GATEWAY}${BGN}http://${IP}:8080${CL}"
+echo -e "🚀 ${CL}${BL}${APP} setup has been successfully initialized!${CL}"
+echo -e "💡 ${YW}Access it using the following URL:${CL}"
+echo -e "🌐 ${GN}http://${IP}:8080${CL}\n"
