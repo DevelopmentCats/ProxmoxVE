@@ -133,5 +133,3 @@ motd_ssh
 customize
 
 msg_ok "Completed Successfully!\n"
-echo -e "${APP} should be reachable by going to the following URL."
-echo -e "${BL}http://${IP}:8080${CL} \n"
