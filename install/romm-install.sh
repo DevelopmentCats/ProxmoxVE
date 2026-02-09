@@ -142,6 +142,9 @@ cp "$ROMM_DIR/docker/nginx/js/decode.js" /etc/nginx/js/
 cp "$ROMM_DIR/docker/nginx/default.conf" /etc/nginx/nginx.conf
 sed -i "s|modules/ngx_http_js_module.so|/usr/lib/nginx/modules/ngx_http_js_module.so|g" /etc/nginx/nginx.conf
 sed -i "s|modules/ngx_http_zip_module.so|/usr/lib/nginx/modules/ngx_http_zip_module.so|g" /etc/nginx/nginx.conf
+sed -i "s|pid /tmp/nginx.pid;|pid /run/nginx.pid;|g" /etc/nginx/nginx.conf
+sed -i "s|access_log /dev/stdout|access_log /var/log/nginx/access.log|g" /etc/nginx/nginx.conf
+sed -i "s|error_log /dev/stderr|error_log /var/log/nginx/error.log|g" /etc/nginx/nginx.conf
 
 mkdir -p /etc/nginx/conf.d
 export ROMM_BASE_PATH="$ROMM_BASE"
