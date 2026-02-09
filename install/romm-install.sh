@@ -2,7 +2,7 @@
 
 # Copyright (c) 2021-2026 community-scripts ORG
 # Author: DevelopmentCats
-# License: MIT | https://github.com/DevelopmentCats/ProxmoxVE/raw/main/LICENSE
+# License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://github.com/rommapp/romm
 
 source /dev/stdin <<< "$FUNCTIONS_FILE_PATH"
@@ -34,23 +34,9 @@ $STD apt-get install -y \
   libmagic-dev \
   libpcre3-dev \
   zlib1g-dev \
-  openssl
+  openssl \
+  gettext-base
 msg_ok "Installed Dependencies"
-
-msg_info "Building nginx zip module"
-(
-  NGINX_VERSION=$(nginx -v 2>&1 | grep -oP '(?<=nginx/)\d+\.\d+\.\d+')
-  MOD_ZIP_COMMIT="a9f9afa441117831cc712a832c98408b3f0416f6"
-  git clone https://github.com/evanmiller/mod_zip.git /tmp/mod_zip
-  cd /tmp/mod_zip && git checkout "$MOD_ZIP_COMMIT"
-  git clone --branch "release-${NGINX_VERSION}" --depth 1 https://github.com/nginx/nginx.git /tmp/nginx
-  cd /tmp/nginx
-  ./auto/configure --with-compat --add-dynamic-module=/tmp/mod_zip/
-  make -f ./objs/Makefile modules
-  install -m 0644 /tmp/nginx/objs/ngx_http_zip_module.so /usr/lib/nginx/modules/
-)
-rm -rf /tmp/mod_zip /tmp/nginx
-msg_ok "Built nginx zip module"
 
 msg_info "Setting up MariaDB"
 setup_mariadb
@@ -87,6 +73,21 @@ ROMM_VERSION="${ROMM_TAG#v}"
 git clone --branch "$ROMM_TAG" --depth 1 https://github.com/rommapp/romm.git "$ROMM_DIR"
 echo "$ROMM_VERSION" > "$ROMM_DIR/.version"
 msg_ok "Cloned RomM v$ROMM_VERSION"
+
+msg_info "Building nginx zip module"
+(
+  NGINX_VERSION=$(nginx -v 2>&1 | grep -oP '(?<=nginx/)\d+\.\d+\.\d+')
+  MOD_ZIP_COMMIT="a9f9afa441117831cc712a832c98408b3f0416f6"
+  git clone https://github.com/evanmiller/mod_zip.git /tmp/mod_zip
+  cd /tmp/mod_zip && git checkout "$MOD_ZIP_COMMIT"
+  git clone --branch "release-${NGINX_VERSION}" --depth 1 https://github.com/nginx/nginx.git /tmp/nginx
+  cd /tmp/nginx
+  ./auto/configure --with-compat --add-dynamic-module=/tmp/mod_zip/
+  make -f ./objs/Makefile modules
+  install -m 0644 /tmp/nginx/objs/ngx_http_zip_module.so /usr/lib/nginx/modules/
+)
+rm -rf /tmp/mod_zip /tmp/nginx
+msg_ok "Built nginx zip module"
 
 msg_info "Installing backend dependencies"
 cd "$ROMM_DIR"
@@ -143,92 +144,13 @@ load_module /usr/lib/nginx/modules/ngx_http_js_module.so;
 load_module /usr/lib/nginx/modules/ngx_http_zip_module.so;
 MODULEEOF
 
-cat > /etc/nginx/sites-available/romm << 'NGINXEOF'
-# Helper to get scheme regardless if we are behind a proxy or not
-map $http_x_forwarded_proto $forwardscheme {
-    default $scheme;
-    https https;
-}
+export ROMM_BASE_PATH="$ROMM_BASE"
+envsubst '${ROMM_BASE_PATH}' < "$ROMM_DIR/docker/nginx/templates/default.conf.template" | \
+  sed "s/\${ROMM_PORT}/$ROMM_PORT/g" | \
+  sed "s/\${IPV6_LISTEN}//g" | \
+  sed 's/server_name localhost;/server_name _;/g' > /etc/nginx/sites-available/romm
 
-# COEP and COOP headers for cross-origin isolation, which are set only for the
-# EmulatorJS player path, to enable SharedArrayBuffer support, which is needed
-# for multi-threaded cores.
-map $request_uri $coep_header {
-    default        "";
-    ~^/rom/.*/ejs$ "require-corp";
-}
-map $request_uri $coop_header {
-    default        "";
-    ~^/rom/.*/ejs$ "same-origin";
-}
-
-js_import /etc/nginx/js/decode.js;
-
-upstream wsgi_server {
-    server unix:/tmp/gunicorn.sock;
-}
-
-server {
-    root /var/www/html;
-    listen 8080;
-    server_name _;
-
-    client_max_body_size 0;
-    send_timeout 600s;
-    keepalive_timeout 600s;
-    client_body_timeout 600s;
-
-    proxy_set_header Host $http_host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $forwardscheme;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-        proxy_redirect off;
-        add_header Access-Control-Allow-Origin *;
-        add_header Access-Control-Allow-Methods *;
-        add_header Access-Control-Allow-Headers *;
-        add_header Cross-Origin-Embedder-Policy $coep_header;
-        add_header Cross-Origin-Opener-Policy $coop_header;
-    }
-
-    # Static files
-    location /assets {
-        try_files $uri $uri/ =404;
-    }
-
-    # OpenAPI for swagger and redoc
-    location /openapi.json {
-        proxy_pass http://wsgi_server;
-    }
-
-    # Backend api calls
-    location /api {
-        proxy_pass http://wsgi_server;
-        proxy_request_buffering off;
-        proxy_buffering off;
-    }
-    location ~ ^/(ws|netplay) {
-        proxy_pass http://wsgi_server;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-
-    # Internally redirect download requests
-    location /library/ {
-        internal;
-        alias /romm/library/;
-    }
-
-    # Internal decoding endpoint, used to decode base64 encoded data
-    location /decode {
-        internal;
-        js_content decode.decodeBase64;
-    }
-}
-NGINXEOF
+sed -i '/^server {/i js_import /etc/nginx/js/decode.js;\n\nupstream wsgi_server {\n    server unix:/tmp/gunicorn.sock;\n}\n' /etc/nginx/sites-available/romm
 
 rm -f /etc/nginx/sites-enabled/default
 ln -sf /etc/nginx/sites-available/romm /etc/nginx/sites-enabled/romm
