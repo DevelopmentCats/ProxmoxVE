@@ -47,6 +47,7 @@ cd /tmp/nginx
 ./auto/configure --with-compat --add-dynamic-module=/tmp/mod_zip/
 make -f ./objs/Makefile modules
 install -m 0644 /tmp/nginx/objs/ngx_http_zip_module.so /usr/lib/nginx/modules/
+cd /
 rm -rf /tmp/mod_zip /tmp/nginx
 msg_ok "Built nginx zip module"
 
