@@ -139,11 +139,12 @@ msg_info "Configuring Nginx"
 mkdir -p /etc/nginx/js
 cp "$ROMM_DIR/docker/nginx/js/decode.js" /etc/nginx/js/
 
-cat > /etc/nginx/modules-available/90-romm-js.conf << 'MODULEEOF'
+cat > /etc/nginx/modules-available/90-romm.conf << 'MODULEEOF'
+load_module /usr/lib/nginx/modules/ngx_http_js_module.so;
 load_module /usr/lib/nginx/modules/ngx_http_zip_module.so;
 MODULEEOF
 
-ln -sf /etc/nginx/modules-available/90-romm-js.conf /etc/nginx/modules-enabled/90-romm-js.conf
+ln -sf /etc/nginx/modules-available/90-romm.conf /etc/nginx/modules-enabled/90-romm.conf
 
 export ROMM_BASE_PATH="$ROMM_BASE"
 envsubst '${ROMM_BASE_PATH}' < "$ROMM_DIR/docker/nginx/templates/default.conf.template" | \
