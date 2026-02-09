@@ -139,23 +139,19 @@ msg_info "Configuring Nginx"
 mkdir -p /etc/nginx/js
 cp "$ROMM_DIR/docker/nginx/js/decode.js" /etc/nginx/js/
 
-cat > /etc/nginx/modules-available/90-romm.conf << 'MODULEEOF'
-load_module /usr/lib/nginx/modules/ngx_http_js_module.so;
-load_module /usr/lib/nginx/modules/ngx_http_zip_module.so;
-MODULEEOF
+cp "$ROMM_DIR/docker/nginx/default.conf" /etc/nginx/nginx.conf
+sed -i "s|modules/ngx_http_js_module.so|/usr/lib/nginx/modules/ngx_http_js_module.so|g" /etc/nginx/nginx.conf
+sed -i "s|modules/ngx_http_zip_module.so|/usr/lib/nginx/modules/ngx_http_zip_module.so|g" /etc/nginx/nginx.conf
 
-ln -sf /etc/nginx/modules-available/90-romm.conf /etc/nginx/modules-enabled/90-romm.conf
-
+mkdir -p /etc/nginx/conf.d
 export ROMM_BASE_PATH="$ROMM_BASE"
 envsubst '${ROMM_BASE_PATH}' < "$ROMM_DIR/docker/nginx/templates/default.conf.template" | \
   sed "s/\${ROMM_PORT}/$ROMM_PORT/g" | \
   sed "s/\${IPV6_LISTEN}//g" | \
-  sed 's/server_name localhost;/server_name _;/g' > /etc/nginx/sites-available/romm
+  sed 's/server_name localhost;/server_name _;/g' > /etc/nginx/conf.d/romm.conf
 
-sed -i '/^server {/i js_import /etc/nginx/js/decode.js;\n\nupstream wsgi_server {\n    server unix:/tmp/gunicorn.sock;\n}\n' /etc/nginx/sites-available/romm
+sed -i '/^server {/i js_import /etc/nginx/js/decode.js;\n\nupstream wsgi_server {\n    server unix:/tmp/gunicorn.sock;\n}\n' /etc/nginx/conf.d/romm.conf
 
-rm -f /etc/nginx/sites-enabled/default
-ln -sf /etc/nginx/sites-available/romm /etc/nginx/sites-enabled/romm
 systemctl enable nginx
 msg_ok "Nginx configured"
 
