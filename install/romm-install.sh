@@ -150,8 +150,6 @@ envsubst '${ROMM_BASE_PATH}' < "$ROMM_DIR/docker/nginx/templates/default.conf.te
   sed "s/\${IPV6_LISTEN}//g" | \
   sed 's/server_name localhost;/server_name _;/g' > /etc/nginx/conf.d/romm.conf
 
-sed -i '/^server {/i js_import /etc/nginx/js/decode.js;\n\nupstream wsgi_server {\n    server unix:/tmp/gunicorn.sock;\n}\n' /etc/nginx/conf.d/romm.conf
-
 systemctl enable nginx
 msg_ok "Nginx configured"
 
