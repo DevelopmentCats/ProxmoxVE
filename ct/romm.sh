@@ -1,21 +1,18 @@
 #!/usr/bin/env bash
-
-source <(curl -s https://raw.githubusercontent.com/DevelopmentCats/ProxmoxVE/main/misc/build.func)
-
+source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
 # Copyright (c) 2021-2026 community-scripts ORG
 # Author: DevelopmentCats
-# Sponsor: https://ko-fi.com/developmentcats
-# License: MIT | https://github.com/DevelopmentCats/ProxmoxVE/raw/branch/main/LICENSE
-# Source: https://git.chesher.xyz/cat/romm-proxmox-ve-script
+# License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
+# Source: https://github.com/rommapp/romm
 
 APP="RomM"
-var_tags="media;utility"
-var_cpu="2"
-var_ram="4096"
-var_disk="50"
-var_os="debian"
-var_version="12"
-var_unprivileged="1"
+var_tags="${var_tags:-media;utility}"
+var_cpu="${var_cpu:-2}"
+var_ram="${var_ram:-4096}"
+var_disk="${var_disk:-50}"
+var_os="${var_os:-debian}"
+var_version="${var_version:-12}"
+var_unprivileged="${var_unprivileged:-1}"
 
 header_info "$APP"
 variables
