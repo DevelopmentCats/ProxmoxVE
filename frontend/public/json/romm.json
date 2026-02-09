@@ -11,7 +11,7 @@
   "interface_port": 8080,
   "documentation": "https://docs.romm.app/",
   "website": "https://romm.app/",
-  "logo": "https://raw.githubusercontent.com/rommapp/romm/main/resources/romm-logo.svg",
+  "logo": "https://raw.githubusercontent.com/rommapp/romm/main/frontend/assets/logos/romm_logo_ps2_circle.png",
   "description": "RomM (ROM Manager) is an application for managing your ROM collection. It provides a clean web interface for organizing, scanning, and viewing your ROM library with metadata support. Features include automatic metadata fetching, platform organization, and library management tools.",
   "install_methods": [
     {
@@ -19,8 +19,8 @@
       "script": "ct/romm.sh",
       "resources": {
         "cpu": 2,
-        "ram": 2048,
-        "hdd": 20,
+        "ram": 4096,
+        "hdd": 50,
         "os": "debian",
         "version": "12"
       }

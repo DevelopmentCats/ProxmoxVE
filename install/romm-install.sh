@@ -19,6 +19,7 @@ APP="RomM"
 ROMM_DIR="/opt/romm"
 ROMM_BASE="/romm"
 ROMM_CREDS="/root/romm.creds"
+ROMM_PORT="8080"
 
 msg_info "Installing Dependencies"
 $STD apt-get install -y \
@@ -27,6 +28,7 @@ $STD apt-get install -y \
   build-essential \
   mariadb-server \
   redis-server \
+  nginx \
   libmariadb-dev \
   libpq-dev \
   libmagic-dev \
@@ -81,9 +83,19 @@ $STD npm ci --ignore-scripts --no-audit --no-fund
 $STD npm run build
 msg_ok "Frontend built"
 
+msg_info "Setting up frontend"
+mkdir -p /var/www/html
+rm -rf /var/www/html/*
+cp -a "$ROMM_DIR/frontend/dist/." /var/www/html/
+mkdir -p /var/www/html/assets
+cp -a "$ROMM_DIR/frontend/assets/." /var/www/html/assets/
+msg_ok "Frontend installed"
+
 msg_info "Creating directory structure"
 mkdir -p "$ROMM_BASE"/{library/roms,resources,assets,config}
 touch "$ROMM_BASE/config/config.yml"
+ln -sfn "$ROMM_BASE/resources" /var/www/html/assets/romm/resources
+ln -sfn "$ROMM_BASE/assets" /var/www/html/assets/romm/assets
 msg_ok "Directories created"
 
 msg_info "Creating environment file"
@@ -100,10 +112,101 @@ REDIS_PORT=6379
 ROMM_AUTH_SECRET_KEY=$ROMM_AUTH_SECRET_KEY
 EOF
 
-# Add auth secret key to credentials file
 echo "" >> "$ROMM_CREDS"
 echo "Auth Secret Key: $ROMM_AUTH_SECRET_KEY" >> "$ROMM_CREDS"
 msg_ok "Environment configured"
+
+msg_info "Configuring Nginx"
+cat > /etc/nginx/sites-available/romm << 'NGINXEOF'
+# Helper to get scheme regardless if we are behind a proxy or not
+map $http_x_forwarded_proto $forwardscheme {
+    default $scheme;
+    https https;
+}
+
+# COEP and COOP headers for cross-origin isolation, which are set only for the
+# EmulatorJS player path, to enable SharedArrayBuffer support, which is needed
+# for multi-threaded cores.
+map $request_uri $coep_header {
+    default        "";
+    ~^/rom/.*/ejs$ "require-corp";
+}
+map $request_uri $coop_header {
+    default        "";
+    ~^/rom/.*/ejs$ "same-origin";
+}
+
+upstream wsgi_server {
+    server unix:/tmp/gunicorn.sock;
+}
+
+server {
+    root /var/www/html;
+    listen 8080;
+    server_name _;
+
+    client_max_body_size 0;
+    send_timeout 600s;
+    keepalive_timeout 600s;
+    client_body_timeout 600s;
+
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $forwardscheme;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+        proxy_redirect off;
+        add_header Access-Control-Allow-Origin *;
+        add_header Access-Control-Allow-Methods *;
+        add_header Access-Control-Allow-Headers *;
+        add_header Cross-Origin-Embedder-Policy $coep_header;
+        add_header Cross-Origin-Opener-Policy $coop_header;
+    }
+
+    # Static files
+    location /assets {
+        try_files $uri $uri/ =404;
+    }
+
+    # OpenAPI for swagger and redoc
+    location /openapi.json {
+        proxy_pass http://wsgi_server;
+    }
+
+    # Backend api calls
+    location /api {
+        proxy_pass http://wsgi_server;
+        proxy_request_buffering off;
+        proxy_buffering off;
+    }
+    location ~ ^/(ws|netplay) {
+        proxy_pass http://wsgi_server;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # Internally redirect download requests
+    location /library/ {
+        internal;
+        alias /romm/library/;
+    }
+}
+NGINXEOF
+
+rm -f /etc/nginx/sites-enabled/default
+ln -sf /etc/nginx/sites-available/romm /etc/nginx/sites-enabled/romm
+systemctl enable nginx
+msg_ok "Nginx configured"
+
+msg_info "Running database migrations"
+cd "$ROMM_DIR/backend"
+source "$ROMM_DIR/.venv/bin/activate"
+alembic upgrade head
+deactivate
+msg_ok "Database migrations complete"
 
 msg_info "Creating systemd service"
 cat > /etc/systemd/system/romm.service << 'SERVICEEOF'
@@ -114,9 +217,23 @@ After=network.target mariadb.service redis.service
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/romm
+WorkingDirectory=/opt/romm/backend
 EnvironmentFile=/opt/romm/.env
-ExecStart=/opt/romm/.venv/bin/python3 /opt/romm/backend/main.py
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONDONTWRITEBYTECODE=1"
+ExecStart=/opt/romm/.venv/bin/gunicorn \
+  --bind=unix:/tmp/gunicorn.sock \
+  --forwarded-allow-ips="*" \
+  --worker-class uvicorn_worker.UvicornWorker \
+  --workers 1 \
+  --timeout 300 \
+  --keep-alive 2 \
+  --max-requests 1000 \
+  --max-requests-jitter 100 \
+  --worker-connections 1000 \
+  --access-logfile - \
+  --error-logfile - \
+  main:app
 Restart=always
 RestartSec=10
 
@@ -128,6 +245,10 @@ systemctl daemon-reload
 systemctl enable romm
 systemctl start romm
 msg_ok "RomM service started"
+
+msg_info "Starting Nginx"
+systemctl start nginx
+msg_ok "Nginx started"
 
 motd_ssh
 customize

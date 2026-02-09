@@ -16,6 +16,7 @@ var_disk="50"
 var_os="debian"
 var_version="12"
 var_unprivileged="1"
+var_sponsor="https://ko-fi.com/developmentcats"
 
 header_info "$APP"
 variables
