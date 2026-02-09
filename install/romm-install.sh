@@ -138,9 +138,9 @@ msg_info "Configuring Nginx"
 mkdir -p /etc/nginx/js
 cp "$ROMM_DIR/docker/nginx/js/decode.js" /etc/nginx/js/
 
-cat > /etc/nginx/modules-enabled/90-romm.conf << 'MODULEEOF'
-load_module modules/ngx_http_js_module.so;
-load_module modules/ngx_http_zip_module.so;
+cat > /etc/nginx/conf.d/00-romm-modules.conf << 'MODULEEOF'
+load_module /usr/lib/nginx/modules/ngx_http_js_module.so;
+load_module /usr/lib/nginx/modules/ngx_http_zip_module.so;
 MODULEEOF
 
 cat > /etc/nginx/sites-available/romm << 'NGINXEOF'
