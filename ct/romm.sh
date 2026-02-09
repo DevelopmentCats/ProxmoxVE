@@ -10,9 +10,9 @@ source <(curl -s https://raw.githubusercontent.com/DevelopmentCats/ProxmoxVE/mai
 
 APP="RomM"
 var_tags="media;utility"
-var_cpu="4"
-var_ram="2048"
-var_disk="10"
+var_cpu="2"
+var_ram="4096"
+var_disk="50"
 var_os="debian"
 var_version="12"
 var_unprivileged="1"
