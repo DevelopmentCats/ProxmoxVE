@@ -43,9 +43,9 @@ function update_script() {
 
   msg_info "Updating ${APP} from v${CURRENT_VERSION} to v${LATEST_VERSION}"
   
-  msg_info "Stopping ${APP} service"
-  systemctl stop romm
-  msg_ok "Stopped ${APP} service"
+  msg_info "Stopping ${APP} services"
+  systemctl stop romm romm-worker
+  msg_ok "Stopped ${APP} services"
   
   msg_info "Downloading RomM v${LATEST_VERSION}"
   ROMM_TARBALL=$(echo "$ROMM_RELEASE_JSON" | jq -r '.tarball_url')
@@ -79,9 +79,9 @@ function update_script() {
   alembic upgrade head
   msg_ok "Ran database migrations"
   
-  msg_info "Starting ${APP} service"
-  systemctl start romm
-  msg_ok "Started ${APP} service"
+  msg_info "Starting ${APP} services"
+  systemctl start romm romm-worker
+  msg_ok "Started ${APP} services"
   
   msg_ok "Updated ${APP} to v${LATEST_VERSION}"
   exit

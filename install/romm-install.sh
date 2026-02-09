@@ -201,6 +201,36 @@ systemctl enable romm
 systemctl start romm
 msg_ok "RomM service started"
 
+msg_info "Creating RomM worker service"
+cat > /etc/systemd/system/romm-worker.service << 'WORKEREOF'
+[Unit]
+Description=RomM Worker
+After=network.target mariadb.service redis.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/romm/backend
+EnvironmentFile=/opt/romm/.env
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONDONTWRITEBYTECODE=1"
+ExecStart=/opt/romm/.venv/bin/rq worker \
+  --url redis://localhost:6379 \
+  default low_prio \
+  --with-scheduler \
+  --worker-class rq.worker.Worker
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+WORKEREOF
+
+systemctl daemon-reload
+systemctl enable romm-worker
+systemctl start romm-worker
+msg_ok "RomM worker service started"
+
 msg_info "Starting Nginx"
 systemctl restart nginx
 msg_ok "Nginx started"
