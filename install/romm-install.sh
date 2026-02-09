@@ -216,7 +216,7 @@ Environment="PYTHONUNBUFFERED=1"
 Environment="PYTHONDONTWRITEBYTECODE=1"
 ExecStart=/opt/romm/.venv/bin/rq worker \
   --url redis://localhost:6379 \
-  default low_prio \
+  high default low_prio \
   --with-scheduler \
   --worker-class rq.worker.Worker
 Restart=always
