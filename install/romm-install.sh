@@ -247,7 +247,7 @@ systemctl start romm
 msg_ok "RomM service started"
 
 msg_info "Starting Nginx"
-systemctl start nginx
+systemctl restart nginx
 msg_ok "Nginx started"
 
 motd_ssh
