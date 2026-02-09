@@ -38,16 +38,17 @@ $STD apt-get install -y \
 msg_ok "Installed Dependencies"
 
 msg_info "Building nginx zip module"
-NGINX_VERSION=$(nginx -v 2>&1 | grep -oP '(?<=nginx/)\d+\.\d+\.\d+')
-MOD_ZIP_COMMIT="a9f9afa441117831cc712a832c98408b3f0416f6"
-git clone https://github.com/evanmiller/mod_zip.git /tmp/mod_zip
-cd /tmp/mod_zip && git checkout "$MOD_ZIP_COMMIT"
-git clone --branch "release-${NGINX_VERSION}" --depth 1 https://github.com/nginx/nginx.git /tmp/nginx
-cd /tmp/nginx
-./auto/configure --with-compat --add-dynamic-module=/tmp/mod_zip/
-make -f ./objs/Makefile modules
-install -m 0644 /tmp/nginx/objs/ngx_http_zip_module.so /usr/lib/nginx/modules/
-cd /
+(
+  NGINX_VERSION=$(nginx -v 2>&1 | grep -oP '(?<=nginx/)\d+\.\d+\.\d+')
+  MOD_ZIP_COMMIT="a9f9afa441117831cc712a832c98408b3f0416f6"
+  git clone https://github.com/evanmiller/mod_zip.git /tmp/mod_zip
+  cd /tmp/mod_zip && git checkout "$MOD_ZIP_COMMIT"
+  git clone --branch "release-${NGINX_VERSION}" --depth 1 https://github.com/nginx/nginx.git /tmp/nginx
+  cd /tmp/nginx
+  ./auto/configure --with-compat --add-dynamic-module=/tmp/mod_zip/
+  make -f ./objs/Makefile modules
+  install -m 0644 /tmp/nginx/objs/ngx_http_zip_module.so /usr/lib/nginx/modules/
+)
 rm -rf /tmp/mod_zip /tmp/nginx
 msg_ok "Built nginx zip module"
 
