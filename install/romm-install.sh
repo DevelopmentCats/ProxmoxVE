@@ -28,11 +28,27 @@ $STD apt-get install -y \
   mariadb-server \
   redis-server \
   nginx \
+  libnginx-mod-http-js \
   libmariadb-dev \
   libpq-dev \
   libmagic-dev \
+  libpcre3-dev \
+  zlib1g-dev \
   openssl
 msg_ok "Installed Dependencies"
+
+msg_info "Building nginx zip module"
+NGINX_VERSION=$(nginx -v 2>&1 | grep -oP '(?<=nginx/)\d+\.\d+\.\d+')
+MOD_ZIP_COMMIT="a9f9afa441117831cc712a832c98408b3f0416f6"
+git clone https://github.com/evanmiller/mod_zip.git /tmp/mod_zip
+cd /tmp/mod_zip && git checkout "$MOD_ZIP_COMMIT"
+git clone --branch "release-${NGINX_VERSION}" --depth 1 https://github.com/nginx/nginx.git /tmp/nginx
+cd /tmp/nginx
+./auto/configure --with-compat --add-dynamic-module=/tmp/mod_zip/
+make -f ./objs/Makefile modules
+install -m 0644 /tmp/nginx/objs/ngx_http_zip_module.so /usr/lib/nginx/modules/
+rm -rf /tmp/mod_zip /tmp/nginx
+msg_ok "Built nginx zip module"
 
 msg_info "Setting up MariaDB"
 setup_mariadb
@@ -117,6 +133,14 @@ echo "Auth Secret Key: $ROMM_AUTH_SECRET_KEY" >> "$ROMM_CREDS"
 msg_ok "Environment configured"
 
 msg_info "Configuring Nginx"
+mkdir -p /etc/nginx/js
+cp "$ROMM_DIR/docker/nginx/js/decode.js" /etc/nginx/js/
+
+cat > /etc/nginx/modules-enabled/90-romm.conf << 'MODULEEOF'
+load_module modules/ngx_http_js_module.so;
+load_module modules/ngx_http_zip_module.so;
+MODULEEOF
+
 cat > /etc/nginx/sites-available/romm << 'NGINXEOF'
 # Helper to get scheme regardless if we are behind a proxy or not
 map $http_x_forwarded_proto $forwardscheme {
@@ -135,6 +159,8 @@ map $request_uri $coop_header {
     default        "";
     ~^/rom/.*/ejs$ "same-origin";
 }
+
+js_import /etc/nginx/js/decode.js;
 
 upstream wsgi_server {
     server unix:/tmp/gunicorn.sock;
@@ -192,6 +218,12 @@ server {
     location /library/ {
         internal;
         alias /romm/library/;
+    }
+
+    # Internal decoding endpoint, used to decode base64 encoded data
+    location /decode {
+        internal;
+        js_content decode.decodeBase64;
     }
 }
 NGINXEOF
