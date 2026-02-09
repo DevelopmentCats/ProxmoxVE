@@ -93,6 +93,7 @@ msg_ok "Frontend installed"
 msg_info "Creating directory structure"
 mkdir -p "$ROMM_BASE"/{library/roms,resources,assets,config}
 touch "$ROMM_BASE/config/config.yml"
+mkdir -p /var/www/html/assets/romm
 ln -sfn "$ROMM_BASE/resources" /var/www/html/assets/romm/resources
 ln -sfn "$ROMM_BASE/assets" /var/www/html/assets/romm/assets
 msg_ok "Directories created"
